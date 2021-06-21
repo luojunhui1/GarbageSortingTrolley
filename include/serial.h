@@ -20,7 +20,7 @@
 
 /*--------------------------------暂定协议-------------------------------------*/
 
-#define    VISION_LENGTH        16
+#define    VISION_LENGTH        20
 //起始字节,协议固定为0xA5
 #define    VISION_SOF         (0xA5)
 //end字节,协议固定为0xA5
@@ -28,9 +28,9 @@
 
 /**---------------------------------------SEND DATA PROTOCOL--------------------------------------------**/
 /**    ----------------------------------------------------------------------------------------------------
-FIELD  |  A5  |  distance  |  angle  |  is_get_suitable_position  |  mission_state  |  blank  |  A6  |
+FIELD  |  A5  |  index  |  distance  |  angle  |  is_get_clamp_position  |  is_get_putback_position  |  mission_state  |  blank  |  A6  |
        ----------------------------------------------------------------------------------------------------
-BYTE   |   1  |     4      |    4    |             1              |        1        |    4    |  1   |
+BYTE   |   1  |    1    |     4      |    4    |           1             |             1             |        1        |     6   |   1  |
        ----------------------------------------------------------------------------------------------------
 **/
 /**---------------------------------------SEND DATA PROTOCOL--------------------------------------------**/
@@ -38,9 +38,9 @@ BYTE   |   1  |     4      |    4    |             1              |        1    
 
 /**---------------------------------------RECEIVE DATA PROTOCOL----------------------------------------**/
 /**    -----------------------------------------------------------------------------------------------------------------------------------------
-FIELD  |  head  |  x  |  y  |  angle  |  is_clamped  |  is_target_putback  |  A6  |
+FIELD  |  head  |  index  |  x  |  y  |  angle  |  is_clamped  |  is_target_putback  |  blank  |  A6  |
        ----------------------------------------------------------------------------------------------------
-BYTE   |   1    |  4  |  4  |    4    |      1       |          1          |  1   |
+BYTE   |   1    |    1    |  4  |  4  |    4    |      1       |          1          |    3    |  1   |
 ---------------------------------------------------------------------------------------------------------
 **/
 
@@ -53,9 +53,12 @@ struct ReceiveData
 {
     uint8_t head;
 
+    uint8_t index;
+
     int x;
     int y;
     float angle;
+
     uint8_t is_clamped;
     uint8_t is_target_putback;
 
@@ -84,7 +87,8 @@ private:
 public:
     explicit Serial(int speed = 115200, char event = 'N', int bits = 8, int stop = 1);
     ~Serial();
-    void pack(const float distance, const float angle, const uint8_t is_get_suitable_position, const uint8_t mission_state);
+    void pack(const uint8_t index, const float distance, const float angle, const uint8_t is_get_clamp_position,
+              const uint8_t is_get_putback_position, const uint8_t mission_state);
     bool init_port(int speed = 115200, char  event = 'N', int bits = 8, int stop = 1);
     bool write_data();
     bool read_data(struct ReceiveData& buffer);

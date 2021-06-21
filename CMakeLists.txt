@@ -20,7 +20,7 @@ MESSAGE(STATUS "OpenCV Version: ${OpenCV_VERSION}")
 MESSAGE(STATUS "OpenCV Libraries: ${OpenCVLIBS}")
 MESSAGE(STATUS "Include Path:${PROJECT_SOURCE_DIR} ${OpenCV_INCLUDE_DIRS}")
 
-FILE(GLOB_RECURSE SOURCES)
+FILE(GLOB_RECURSE SOURCES "src/*.cpp")
 
 #when "Drivers/DAHUA/src/*.cpp" is added to the sourcefiles at last line, these .cpp files looks like not been complied
 ADD_EXECUTABLE(${BIN_NAME} main.cpp ${SOURCES})

@@ -12,3 +12,7 @@ _deps
 
 # build files
 build/
+cmake-build-debug/
+.idea/
+.git/
+

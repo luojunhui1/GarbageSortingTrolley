@@ -23,6 +23,9 @@ using namespace cv::dnn;
 class Detector
 {
 private:
+    Mat channels[3];
+    Mat gray_binary;
+
     Mat input_blob;
     Net net;
     std::vector<String> out_names;
@@ -41,6 +44,7 @@ private:
     double target_coefficience;
 
 public:
+    void preprocess(Mat &src, Mat &dst);
     bool initialize();
     bool detect_target(Mat &frame);
 };

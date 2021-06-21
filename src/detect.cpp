@@ -5,16 +5,71 @@
 
 //struct Param{
 //    double angle_a;
-//    double height_camera;
+//    double height_camera;// milimeter
+//    double f_mili;
 //    double fx; // fx = f / dx
 //    double fy; // fy = f  / dy
 //}
-Mat_<double> param[4];
 
-static float measure_distance(int u, int v)
+Mat_<double> param;
+
+static float measure_distance(int u, int v, int &x, int &y, int &z)
 {
+    u = u - FRAME_WIDTH / 2;
+    v = v - FRAME_HEIGHT / 2;
 
+    static double angle_b, angle_c, op;
+    angle_b = atan(v / param.at<double>(4, 0));
+    angle_c = param.at<double>(0, 0) + angle_b;
+    op = param.at<double>(1, 0) / sin(angle_c);
+
+    z = op * cos(angle_b);
+    x = v * z / param.at<double>(3, 0);
+    y = u * z / param.at<double>(4, 0);
+
+    return sqrt(x * x + y * y + z * z);
 }
+
+void Detector::preprocess(Mat &src, Mat &dst)
+{
+    static Mat blue_diff_green;
+    static Mat green_diff_red;
+    static Mat gray[4];
+
+    cvtColor(src, dst, COLOR_BGR2GRAY);
+    threshold(dst, dst, 150, 255, THRESH_BINARY);
+
+    imshow("dst",dst);
+
+    //read, blue, green, gray
+    split(src, channels);
+
+    subtract(channels[0], channels[1], blue_diff_green);
+    threshold(blue_diff_green, gray[0], GRAY_THRESH, 255, THRESH_BINARY_INV);
+    subtract(channels[1], channels[0], blue_diff_green);
+    threshold(blue_diff_green, gray[1], GRAY_THRESH, 255, THRESH_BINARY_INV);
+
+    subtract(channels[1], channels[2], blue_diff_green);
+    threshold(blue_diff_green, gray[2], GRAY_THRESH, 255, THRESH_BINARY_INV);
+    subtract(channels[2], channels[1], blue_diff_green);
+    threshold(blue_diff_green, gray[3], GRAY_THRESH, 255, THRESH_BINARY_INV);
+
+    bitwise_and(gray[0], gray[1], gray[0]);
+    bitwise_and(gray[2], gray[3], gray[2]);
+
+    bitwise_and(gray[0], gray[2], gray_binary);
+
+//    imshow("gray[0]", gray[0]);
+//    imshow("gray[1]", gray[1]);
+//    imshow("gray[2]", gray[2]);
+//    imshow("gray[3]", gray[3]);
+//    imshow("gray_binary", gray_binary);
+//
+//    imshow("channels[0]", channels[0]);
+//    imshow("channels[1]", channels[1]);
+//    imshow("channels[2]", channels[2]);
+}
+
 bool Detector::initialize()
 {
     net =Net(DetectionModel(cfgPath, weightPath));

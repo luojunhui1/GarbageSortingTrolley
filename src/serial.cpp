@@ -75,19 +75,22 @@ bool Serial::init_port(int speed, char event, int bits, int stop){
  * @brief package the data needed by lower computer
  * @return none
  */
-void Serial::pack(const float distance, const float angle, const uint8_t is_get_suitable_position, const uint8_t mission_state)
+void Serial::pack(const uint8_t index, const float distance, const float angle, const uint8_t is_get_clamp_position,
+                  const uint8_t is_get_putback_position, const uint8_t mission_state)
 {
     unsigned char *p;
     memset(buff, 0, VISION_LENGTH);
 
     buff[0] = VISION_SOF;
 
-    memcpy(buff + 1, &distance, 4);
-    memcpy(buff + 5, &angle, 4);
-    memcpy(buff + 9, &is_get_suitable_position, 1);
-    memcpy(buff + 10, &mission_state, 1);
+    memcpy(buff + 1, &index, 1);
+    memcpy(buff + 2, &distance, 4);
+    memcpy(buff + 6, &angle, 4);
+    memcpy(buff + 10, &is_get_clamp_position, 1);
+    memcpy(buff + 11, &is_get_putback_position, 1);
+    memcpy(buff + 12, &mission_state, 1);
 
-    buff[15] = VISION_TOF;
+    buff[VISION_LENGTH - 1] = VISION_TOF;
 }
 
 /**
@@ -160,12 +163,12 @@ bool Serial::read_data(struct ReceiveData &buffer){
     }
     else
     {
-
-        memcpy(&buffer.x,buff_read + 1,4);
-        memcpy(&buffer.y,buff_read + 5,4);
-        memcpy(&buffer.angle,buff_read + 9,4);
-        memcpy(&buffer.is_clamped,buff_read + 13,1);
-        memcpy(&buffer.is_target_putback,buff_read + 14,1);
+        memcpy(&buffer.index,buff_read + 1,1);
+        memcpy(&buffer.x,buff_read + 2,4);
+        memcpy(&buffer.y,buff_read + 6,4);
+        memcpy(&buffer.angle,buff_read + 10,4);
+        memcpy(&buffer.is_clamped,buff_read + 14,1);
+        memcpy(&buffer.is_target_putback,buff_read + 15,1);
 
         return true;
     }
