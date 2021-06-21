@@ -5,6 +5,8 @@
 
 #include "data.h"
 
+uint8_t game_index;
+
 int FRAME_WIDTH;
 int FRAME_HEIGHT;
 

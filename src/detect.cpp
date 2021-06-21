@@ -30,19 +30,19 @@ static float measure_distance(int u, int v, int &x, int &y, int &z)
     return sqrt(x * x + y * y + z * z);
 }
 
-void Detector::preprocess(Mat &src, Mat &dst)
+void Detector::preprocess(const Mat &frame)
 {
     static Mat blue_diff_green;
     static Mat green_diff_red;
     static Mat gray[4];
 
-    cvtColor(src, dst, COLOR_BGR2GRAY);
-    threshold(dst, dst, 150, 255, THRESH_BINARY);
+    cvtColor(frame, binary, COLOR_BGR2GRAY);
+    threshold(binary, binary, 150, 255, THRESH_BINARY);
 
-    imshow("dst",dst);
+//    imshow("dst",dst);
 
     //read, blue, green, gray
-    split(src, channels);
+    split(frame, channels);
 
     subtract(channels[0], channels[1], blue_diff_green);
     threshold(blue_diff_green, gray[0], GRAY_THRESH, 255, THRESH_BINARY_INV);
@@ -70,7 +70,7 @@ void Detector::preprocess(Mat &src, Mat &dst)
 //    imshow("channels[2]", channels[2]);
 }
 
-bool Detector::initialize()
+void Detector::initialize()
 {
     net =Net(DetectionModel(cfgPath, weightPath));
     net.setPreferableBackend(DNN_BACKEND_CUDA);
@@ -86,17 +86,15 @@ bool Detector::initialize()
     FileStorage fs(filename, FileStorage::READ);
     if (!fs.isOpened()) {
         LOGE("[ERROR] : Can Not Open File : %s",filename.c_str());
-        return false;
     }
 
     fs["Param"]>>param;
 
     fs.release();
 
-    return true;
-
+    is_find_target = false;
 }
-bool Detector::detect_target(Mat &frame)
+void Detector::detect_target(const Mat &frame)
 {
     input_blob = blobFromImage(frame, 1 / 255.F, Size(320, 320), Scalar(), true, false);//输入图像设置，input为32的整数倍，不同尺寸速度不同精度不同
 
@@ -132,35 +130,68 @@ bool Detector::detect_target(Mat &frame)
         }
     }
 
-    if(boxes.size() == 0)
-        return false;
+    if(boxes.empty())
+    {
+        is_find_target = false;
+    }
 
     //---------------------------非极大抑制---------------------------
     NMSBoxes(boxes, confidences, 0.5, 0.5, indices);
 
     target_type = NOTDEFINEDTYPE;
-    target_coefficience = 0;
+    target_confidence = 0;
 
     int target_index = indices[0];
 
     int target_bottom_middle_y, target_bottom_middle_x;
     int min_dis_target2bottom_middle_center = 1<<30;
 
-    for (int index = 0; index < indices.size(); ++index)
+    for (int indice : indices)
     {
-        target_bottom_middle_y = FRAME_HEIGHT - boxes[indices[index]].y + boxes[indices[index]].height;
-        target_bottom_middle_x = FRAME_WIDTH/2 - boxes[indices[index]].x + boxes[indices[index]].width/2;
+        target_bottom_middle_y = FRAME_HEIGHT - boxes[indice].y + boxes[indice].height;
+        target_bottom_middle_x = FRAME_WIDTH/2 - boxes[indice].x + boxes[indice].width/2;
 
         if(target_bottom_middle_x*target_bottom_middle_x + target_bottom_middle_y*target_bottom_middle_y < min_dis_target2bottom_middle_center)
         {
-            target_index = indices[index];
+            target_index = indice;
             min_dis_target2bottom_middle_center = target_bottom_middle_x*target_bottom_middle_x + target_bottom_middle_y*target_bottom_middle_y;
         }
     }
 
     target_box = boxes[target_index];
     target_type = class_ids[target_index];
-    target_coefficience = confidences[target_index];
+    target_confidence = confidences[target_index];
 
-    return true;
+    distance = measure_distance(target_box.x + target_box.width/2, target_box.y + target_box.height, x, y, z);
+
+    angle = atan(x/z)*57.29578;
+
+    is_find_target = true;
+}
+
+void Detector::if_get_clamp_position()
+{
+    //use tracker to find the same target
+
+    //set variable : is_get_clamp_position
+}
+
+void Detector::if_picked_up()
+{
+
+}
+
+void Detector::if_get_putback_position()
+{
+
+}
+
+float Detector::get_target_distance()
+{
+    return distance;
+}
+
+float Detector::get_target_angle()
+{
+    return angle;
 }

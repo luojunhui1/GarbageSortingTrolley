@@ -5,6 +5,8 @@
 #define MASTER_DATA_H
 #include <string>
 
+extern uint8_t game_index;
+
 extern int FRAME_WIDTH;
 extern int FRAME_HEIGHT;
 

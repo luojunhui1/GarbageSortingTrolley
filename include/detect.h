@@ -25,6 +25,7 @@ class Detector
 private:
     Mat channels[3];
     Mat gray_binary;
+    Mat binary;
 
     Mat input_blob;
     Net net;
@@ -40,13 +41,29 @@ private:
     vector<int> indices;
 
     Rect target_box;
-    int target_type;
-    double target_coefficience;
+
+    int x, y, z;
+    float distance;
+    float angle;
 
 public:
-    void preprocess(Mat &src, Mat &dst);
-    bool initialize();
-    bool detect_target(Mat &frame);
+    bool is_find_target;
+    int target_type;
+    double target_confidence;
+    uint8_t is_get_clamp_position;
+    uint8_t is_picked_up;
+    uint8_t is_get_putback_position;
+
+public:
+    void preprocess(const Mat &frame);
+    void initialize();
+    void detect_target(const Mat &frame);
+    void if_get_clamp_position();
+    void if_picked_up();
+    void if_get_putback_position();
+
+    float get_target_distance();
+    float get_target_angle();
 };
 
 #endif //GARBAGESORTINGTROLLEY_DETECT_H

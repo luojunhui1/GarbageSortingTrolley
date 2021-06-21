@@ -168,8 +168,7 @@ bool Serial::read_data(struct ReceiveData &buffer){
         memcpy(&buffer.y,buff_read + 6,4);
         memcpy(&buffer.angle,buff_read + 10,4);
         memcpy(&buffer.is_clamped,buff_read + 14,1);
-        memcpy(&buffer.is_target_putback,buff_read + 15,1);
-
+        memcpy(&buffer.is_turning,buff_read + 15,1);
         return true;
     }
 

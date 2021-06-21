@@ -3,21 +3,22 @@
 //
 #include "states.h"
 
-void State::set_index(const int index) {this->index = index;}
+void State::set_index(const int index) { this->index = index;}
 void State::set_x(const int x) {this->x = x;}
 void State::set_y(const int y) {this->y = y;}
 void State::set_angle(const float angle) {this->angle = angle;}
 void State::set_clamp_state(const int clamp_state) {this->clamp_state = clamp_state;}
 void State::set_mission_state(const int mission_state) {this->mission_state = mission_state;}
-void State::set_target_type(const int target_type, const double coefficience) {this->target_type = target_type;
-                            this->coefficience = coefficience;}
+void State::set_target_type(const int target_type, const double confidence) {this->target_type = target_type;
+                            this->confidence = confidence;}
 
-void State::get_index(int &index) {index = this->index;}
-void State::get_xy(int &x, int &y) {x = this->x;y = this->y;}
-void State::get_clamp_state(int &clamp_state) {clamp_state = this->clamp_state;}
-void State::get_mission_state(int &mission_state) {mission_state = this->mission_state;}
-void State::get_target_type(int &target_type, double &coefficience) {target_type = this->target_type;
-                            coefficience = this->coefficience;}
+int State::get_index() const {return index;}
+int State::get_x() const {return x;}
+int State::get_y() const {return y;}
+int State::get_clamp_state() const {return clamp_state;}
+int State::get_mission_state() const {return mission_state;}
+int State::get_target_type() const {return target_type;}
+double State::get_target_confidence() const {return confidence;}
 
 void State::initialize()
 {
@@ -31,7 +32,7 @@ void State::initialize()
     mission_state = NOTDEFINEDMISSION;
 
     target_type = NOTDEFINEDTYPE;
-    coefficience = 0;
+    confidence = 0;
 
 
 }

@@ -38,9 +38,9 @@ BYTE   |   1  |    1    |     4      |    4    |           1             |      
 
 /**---------------------------------------RECEIVE DATA PROTOCOL----------------------------------------**/
 /**    -----------------------------------------------------------------------------------------------------------------------------------------
-FIELD  |  head  |  index  |  x  |  y  |  angle  |  is_clamped  |  is_target_putback  |  blank  |  A6  |
+FIELD  |  head  |  index  |  x  |  y  |  angle  |  is_clamped  |  is_turning  |  blank  |  A6  |
        ----------------------------------------------------------------------------------------------------
-BYTE   |   1    |    1    |  4  |  4  |    4    |      1       |          1          |    3    |  1   |
+BYTE   |   1    |    1    |  4  |  4  |    4    |      1       |      1       |   3    |  1   |
 ---------------------------------------------------------------------------------------------------------
 **/
 
@@ -51,18 +51,19 @@ using namespace std;
  */
 struct ReceiveData
 {
-    uint8_t head;
+    uint8_t head{};
 
-    uint8_t index;
+    uint8_t index{};
 
-    int x;
-    int y;
-    float angle;
+    int x = 0;
+    int y = 0;
+    float angle = 0;
 
-    uint8_t is_clamped;
-    uint8_t is_target_putback;
+    uint8_t is_clamped = false;
 
-    uint8_t tail;
+    uint8_t is_turning = false;
+
+    uint8_t tail{};
 };
 
 /**
