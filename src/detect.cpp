@@ -94,8 +94,10 @@ void Detector::initialize()
 
     is_find_target = false;
 }
-void Detector::detect_target(const Mat &frame)
+void Detector::detect_target(const Mat &frame, int mission_state)
 {
+    is_find_target = false;
+
     input_blob = blobFromImage(frame, 1 / 255.F, Size(320, 320), Scalar(), true, false);//输入图像设置，input为32的整数倍，不同尺寸速度不同精度不同
 
     net.setInput(input_blob);
@@ -151,6 +153,12 @@ void Detector::detect_target(const Mat &frame)
         target_bottom_middle_y = FRAME_HEIGHT - boxes[indice].y + boxes[indice].height;
         target_bottom_middle_x = FRAME_WIDTH/2 - boxes[indice].x + boxes[indice].width/2;
 
+        if(mission_state == NEARING)
+        {
+            if(fabs(target_bottom_middle_x) > FRAME_WIDTH/10)
+                continue;
+        }
+
         if(target_bottom_middle_x*target_bottom_middle_x + target_bottom_middle_y*target_bottom_middle_y < min_dis_target2bottom_middle_center)
         {
             target_index = indice;
@@ -174,11 +182,25 @@ void Detector::if_get_clamp_position()
     //use tracker to find the same target
 
     //set variable : is_get_clamp_position
+
+    if(!is_find_target)
+        is_get_clamp_position = false;
+
+    Point2i target_box_center = target_box.tl() + Point2i (target_box.width / 2, target_box.height / 2);
+
+    if(fabs(target_box_center.x - 320) < 50 && fabs(target_box_center.y - 240) < 50)
+            is_get_clamp_position = true;
+    else
+    {
+        angle = angle_map.at<uchar>(target_box_center.x, target_box_center.y);
+        distance = distance_map.at<uchar>(target_box_center.x, target_box_center.y);
+    }
+
 }
 
 void Detector::if_picked_up()
 {
-
+    is_picked_up = true;
 }
 
 void Detector::if_get_putback_position()

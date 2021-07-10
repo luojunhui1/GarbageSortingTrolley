@@ -4,12 +4,17 @@
 #ifndef MASTER_DATA_H
 #define MASTER_DATA_H
 #include <string>
+#include <opencv2/opencv.hpp>
 
 extern uint8_t game_index;
 
 extern int FRAME_WIDTH;
 extern int FRAME_HEIGHT;
 
+extern cv::Mat angle_map;
+extern cv::Mat distance_map;
+
+extern std::string target_types[];
 extern std::string cfgPath;
 extern std::string weightPath;
 

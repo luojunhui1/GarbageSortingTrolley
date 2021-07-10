@@ -57,7 +57,7 @@ public:
 public:
     void preprocess(const Mat &frame);
     void initialize();
-    void detect_target(const Mat &frame);
+    void detect_target(const Mat &frame, int mission_state);
     void if_get_clamp_position();
     void if_picked_up();
     void if_get_putback_position();
