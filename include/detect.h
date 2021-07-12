@@ -57,6 +57,8 @@ public:
     uint8_t direction;
     Rect target_box;
 
+    RotatedRect possibleArea;
+
 private:
     static const int distance_length = 20;
 

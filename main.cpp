@@ -19,7 +19,6 @@
 using namespace std;
 using namespace cv;
 
-//#define DEBUG_ 1
 
 int main()
 {
@@ -110,7 +109,7 @@ int main()
                 // read from usb
                 cap.read(src1);
                 //detector1.preprocess(src1);
-                detector.detect_target(src1,DETECTING);
+                detector.detect_target(src1,NOTDEFINEDMISSION);
 
                 if(detector.is_find_target) {
                     LOGM("Claw Area Nearing Target %s", target_types[detector.target_type].c_str());
@@ -130,6 +129,9 @@ int main()
 
                     rectangle(src, detector.target_box,Scalar(0,0,255, 1), 2);
                 }
+
+                circle(src1,detector.target_box.tl() + Point2i (detector.target_box.width / 2, detector.target_box.height), 3, Scalar(0,0,255),  -1);
+
 #ifdef DEBUG_
                 pyrDown(src1, src1);
                 imshow("src1", src1);
@@ -144,16 +146,16 @@ int main()
                 break;
             case PUTTING_BACK:
 
+                if(receive_data.is_putback_complete)
+                    mission_state = DETECTING;
+
                 if(!receive_data.is_front_area)
                     break;
+
                 detector.preprocess(src);
 
                 detector.if_get_putback_position();
 
-                if(detector.is_get_putback_position)
-                {
-                    mission_state = DETECTING;
-                }
                 break;
             case NOTDEFINEDMISSION:
                 LOGW("Mission has Not Defined or Not Began");
@@ -161,11 +163,14 @@ int main()
         }
 
         serial.pack(game_index, detector.get_target_distance(), detector.get_target_angle(),
-                    detector.is_get_clamp_position, detector.is_get_putback_position, mission_state, detector.target_type, detector.direction);
+                    detector.is_get_clamp_position, detector.2, mission_state, detector.target_type, detector.direction);
         serial.write_data();
 
         serial.read_data(receive_data);
 #ifdef DEBUG_
+
+        circle(src,detector.possibleArea.center, 3, Scalar(0,0,255),  -1);
+
         pyrDown(src, src);
 
         imshow("src", src);

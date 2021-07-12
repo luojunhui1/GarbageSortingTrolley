@@ -65,6 +65,8 @@ struct ReceiveData
 
     uint8_t is_turning = false;
 
+    uint8_t  is_putback_complete = false;
+
     uint8_t tail{};
 };
 

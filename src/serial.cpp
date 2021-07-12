@@ -156,6 +156,7 @@ bool Serial::read_data(struct ReceiveData &buffer){
         {
             return false;
         }
+
         read_count += onceReadCount;
     }
 
@@ -172,6 +173,7 @@ bool Serial::read_data(struct ReceiveData &buffer){
         memcpy(&buffer.is_clamped,buff_read + 14,1);
         memcpy(&buffer.is_front_area,buff_read + 15,1);
         memcpy(&buffer.is_turning,buff_read + 16,1);
+        memcpy(&buffer.is_putback_complete,buff_read + 17,1);
         return true;
     }
 

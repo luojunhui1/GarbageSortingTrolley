@@ -53,11 +53,17 @@ void Detector::preprocess(const Mat &frame)
 
     cvtColor(frame, hsv_frame, COLOR_BGR2HSV);
     split(hsv_frame, channels);
+    //blue : (98, 254, 152)
+    inRange(hsv_frame, Scalar(48, 204, 112), Scalar(128, 255, 192), gray[0]);
 
-    inRange(hsv_frame, Scalar(90, 200, 46), Scalar(124, 255, 200), gray[0]);
-    inRange(hsv_frame, Scalar(35, 43, 46), Scalar(77, 255, 255), gray[1]);
-    inRange(hsv_frame, Scalar(156, 43, 46), Scalar(180, 255, 255), gray[2]);
-    inRange(hsv_frame, Scalar(10,0, 70), Scalar(140, 53, 140), gray[3]);
+    //green : (73, 247, 90)
+    inRange(hsv_frame, Scalar(33, 207, 50), Scalar(103, 255, 130), gray[1]);
+
+    //red : (174, 254, 138)
+    inRange(hsv_frame, Scalar(134, 214, 98), Scalar(214, 255, 178), gray[2]);
+
+    //gray : (87, 32, 101)
+    inRange(hsv_frame, Scalar(47,0, 64), Scalar(127, 72, 141), gray[3]);
 }
 
 void Detector::initialize()
@@ -94,19 +100,23 @@ void Detector::initialize()
     distance_sum = 0;
     distance_count = 0;
     distance_filter_full_flag = false;
+    direction = 0;
 
 }
 void Detector::detect_target(const Mat &frame, int mission_state)
 {
     is_find_target = false;
 
-    distance_count = 0;
-    distance_sum = 0;
-    distance_filter_full_flag = false;
+    if(mission_state == DETECTING)
+    {
+        distance_count = 0;
+        distance_sum = 0;
+        distance_filter_full_flag = false;
 
-    angle_sum = 0;
-    angle_count = 0;
-    angle_filter_full_flag = false;
+        angle_sum = 0;
+        angle_count = 0;
+        angle_filter_full_flag = false;
+    }
 
     input_blob = blobFromImage(frame, 1 / 255.F, Size(320, 320), Scalar(), true, false);//输入图像设置，input为32的整数倍，不同尺寸速度不同精度不同
 
@@ -198,19 +208,31 @@ void Detector::if_get_clamp_position()
 
     //set variable : is_get_clamp_position
 
+    is_get_clamp_position = false;
+
     if(!is_find_target)
-        is_get_clamp_position = false;
+        return;
 
     double cur_distance, cur_angle;
 
     Point2i target_box_bottom_middle = target_box.tl() + Point2i (target_box.width / 2, target_box.height);
 
-    cur_angle = angle_map.at<uchar>(target_box_bottom_middle.x, target_box_bottom_middle.y);
+    if(target_box_bottom_middle.x >= 640)
+        target_box_bottom_middle.x = 639;
+    else if(target_box_bottom_middle.x < 0)
+        target_box_bottom_middle.x = 0;
+
+    if(target_box_bottom_middle.y >= 480)
+        target_box_bottom_middle.y = 479;
+    else if(target_box_bottom_middle.y < 0)
+        target_box_bottom_middle.y = 0;
+
+    cur_angle = angle_map.at<uchar>(target_box_bottom_middle.y, target_box_bottom_middle.x);
 
     if(target_box_bottom_middle.x < 305.5875)
         cur_angle = -cur_angle;
 
-    cur_distance = distance_map.at<uchar>(target_box_bottom_middle.x, target_box_bottom_middle.y);
+    cur_distance = distance_map.at<uchar>(target_box_bottom_middle.y, target_box_bottom_middle.x);
 
     if(cur_distance == 255)
         cur_distance = -5;
@@ -263,6 +285,9 @@ void Detector::if_get_clamp_position()
     if(fabs(angle) < 20 && fabs(distance) < 25 && distance_count > 5)
         is_get_clamp_position = true;
 
+
+    LOGM("[CLAMP] : Cur DIS : %lf\t Dis Count : %d", cur_distance, distance_count);
+    LOGM("[CLAMP] : Pixel X : %d\t Pixel Y : %d", target_box_bottom_middle.x, target_box_bottom_middle.y);
     LOGM("[CLAMP] : DIS : %lf\t ANGLE : %lf", distance, angle);
 
 }
@@ -275,7 +300,7 @@ void Detector::if_picked_up()
 void Detector::if_get_putback_position()
 {
     direction = 0;
-    is_get_putback_position = 0;
+    is_get_putback_position = false;
 
     switch (target_type) {
         case SPITBALL:
@@ -297,8 +322,6 @@ void Detector::if_get_putback_position()
     }
 
     vector<vector<Point>> contoursPoints;
-
-    RotatedRect possibleArea;
 
     double area_angle;
 
@@ -324,11 +347,18 @@ void Detector::if_get_putback_position()
             else if(possibleArea.center.x > param[1].at<double>(5, 0) + 30)
                 direction = 2;
             else
-                is_get_putback_position = 1;
+                is_get_putback_position = true;
         }
 
         return;
     }
+
+#ifdef DEBUG_
+    imshow("gray[0]", gray[0]);
+    imshow("gray[1]", gray[1]);
+    imshow("gray[2]", gray[2]);
+    imshow("gray[3]", gray[3]);
+#endif
 
     LOGW("Not Found Any Area to Put Down Target");
 }
