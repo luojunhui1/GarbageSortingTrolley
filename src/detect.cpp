@@ -260,7 +260,7 @@ void Detector::if_get_clamp_position()
 
     angle_count = angle_count % angle_length;
 
-    if(fabs(angle) < 15 && fabs(distance) < 20 && distance_count > 5)
+    if(fabs(angle) < 20 && fabs(distance) < 25 && distance_count > 5)
         is_get_clamp_position = true;
 
     LOGM("[CLAMP] : DIS : %lf\t ANGLE : %lf", distance, angle);

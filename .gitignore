@@ -16,8 +16,10 @@ cmake-build-debug/
 .idea/
 .git/
 resource/
-resource/res1/*.jpg
-resource/res2/*.jpg
+res1/*.jpg
+res2/*.jpg
+*.zip
+
 
 
 
