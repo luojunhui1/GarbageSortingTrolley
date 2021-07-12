@@ -11,6 +11,7 @@
 #include <opencv2/core.hpp>
 #include <opencv2/ml.hpp>
 #include <opencv2/dnn.hpp>
+#include <opencv2/core/persistence.hpp>
 
 #include "defs.h"
 #include "data.h"
@@ -23,9 +24,8 @@ using namespace cv::dnn;
 class Detector
 {
 private:
-    Mat channels[3];
+    Mat gray[4];
     Mat gray_binary;
-    Mat binary;
 
     Mat input_blob;
     Net net;
@@ -40,9 +40,10 @@ private:
     vector<float> confidences;
     vector<int> indices;
 
-    Rect target_box;
+    Mat angle_map;
+    Mat distance_map;
 
-    int x, y, z;
+    double x, y, z;
     float distance;
     float angle;
 
@@ -53,6 +54,22 @@ public:
     uint8_t is_get_clamp_position;
     uint8_t is_picked_up;
     uint8_t is_get_putback_position;
+    uint8_t direction;
+    Rect target_box;
+
+private:
+    static const int distance_length = 20;
+
+    double distance_array[distance_length];
+    double distance_sum;
+    int distance_count;
+    bool distance_filter_full_flag;
+
+    static const int angle_length = 50;
+    double angle_array[angle_length];
+    double angle_sum;
+    int angle_count;
+    bool angle_filter_full_flag;
 
 public:
     void preprocess(const Mat &frame);

@@ -11,70 +11,60 @@
 //    double fy; // fy = f  / dy
 //}
 
-Mat_<double> param;
+Mat_<double> param[2];
 
-static float measure_distance(int u, int v, int &x, int &y, int &z)
+static float measure_distance(double u, double v, double &x, double &y, double &z, int camera_index)
 {
-    u = u - FRAME_WIDTH / 2;
-    v = v - FRAME_HEIGHT / 2;
+    u = u - param[camera_index].at<double>(5, 0);
+    v = v - param[camera_index].at<double>(6, 0);
 
     static double angle_b, angle_c, op;
-    angle_b = atan(v / param.at<double>(4, 0));
-    angle_c = param.at<double>(0, 0) + angle_b;
-    op = param.at<double>(1, 0) / sin(angle_c);
+    angle_b = atan(v / param[camera_index].at<double>(4, 0))*57.325;
+    angle_c = param[camera_index].at<double>(0, 0) + angle_b;
+    if(angle_c == 0)
+        angle_c = 0.01;
+    op = param[camera_index].at<double>(1, 0) / tan(angle_c/57.325);
 
-    z = op * cos(angle_b);
-    x = v * z / param.at<double>(3, 0);
-    y = u * z / param.at<double>(4, 0);
+    z = param[camera_index].at<double>(1, 0) / sin(angle_c/57.325)*cos(angle_b/57.325);
+    x = u * z / param[camera_index].at<double>(3, 0);
 
-    return sqrt(x * x + y * y + z * z);
+    y = v * z / param[camera_index].at<double>(4, 0);
+
+    return sqrt(x * x + z * z);
 }
+
+static void sleep_ms(unsigned int secs)
+{
+    struct timeval tval;
+
+    tval.tv_sec=secs/1000;
+
+    tval.tv_usec=(secs*1000)%1000000;
+
+    select(0,NULL,NULL,NULL,&tval);
+}
+
 
 void Detector::preprocess(const Mat &frame)
 {
-    static Mat blue_diff_green;
-    static Mat green_diff_red;
-    static Mat gray[4];
+    static Mat channels[3];
 
-    cvtColor(frame, binary, COLOR_BGR2GRAY);
-    threshold(binary, binary, 150, 255, THRESH_BINARY);
+    static Mat hsv_frame;
 
-//    imshow("dst",dst);
+    cvtColor(frame, hsv_frame, COLOR_BGR2HSV);
+    split(hsv_frame, channels);
 
-    //read, blue, green, gray
-    split(frame, channels);
-
-    subtract(channels[0], channels[1], blue_diff_green);
-    threshold(blue_diff_green, gray[0], GRAY_THRESH, 255, THRESH_BINARY_INV);
-    subtract(channels[1], channels[0], blue_diff_green);
-    threshold(blue_diff_green, gray[1], GRAY_THRESH, 255, THRESH_BINARY_INV);
-
-    subtract(channels[1], channels[2], blue_diff_green);
-    threshold(blue_diff_green, gray[2], GRAY_THRESH, 255, THRESH_BINARY_INV);
-    subtract(channels[2], channels[1], blue_diff_green);
-    threshold(blue_diff_green, gray[3], GRAY_THRESH, 255, THRESH_BINARY_INV);
-
-    bitwise_and(gray[0], gray[1], gray[0]);
-    bitwise_and(gray[2], gray[3], gray[2]);
-
-    bitwise_and(gray[0], gray[2], gray_binary);
-
-//    imshow("gray[0]", gray[0]);
-//    imshow("gray[1]", gray[1]);
-//    imshow("gray[2]", gray[2]);
-//    imshow("gray[3]", gray[3]);
-//    imshow("gray_binary", gray_binary);
-//
-//    imshow("channels[0]", channels[0]);
-//    imshow("channels[1]", channels[1]);
-//    imshow("channels[2]", channels[2]);
+    inRange(hsv_frame, Scalar(90, 200, 46), Scalar(124, 255, 200), gray[0]);
+    inRange(hsv_frame, Scalar(35, 43, 46), Scalar(77, 255, 255), gray[1]);
+    inRange(hsv_frame, Scalar(156, 43, 46), Scalar(180, 255, 255), gray[2]);
+    inRange(hsv_frame, Scalar(10,0, 70), Scalar(140, 53, 140), gray[3]);
 }
 
 void Detector::initialize()
 {
     net =Net(DetectionModel(cfgPath, weightPath));
     net.setPreferableBackend(DNN_BACKEND_CUDA);
-    net.setPreferableTarget(DNN_TARGET_CUDA);
+    net.setPreferableTarget(DNN_TARGET_CUDA_FP16);
     out_names = net.getUnconnectedOutLayersNames();
 
     for (int i = 0; i < out_names.size(); i++)
@@ -84,19 +74,39 @@ void Detector::initialize()
 
     string filename ="../resource/param.xml";
     FileStorage fs(filename, FileStorage::READ);
+
     if (!fs.isOpened()) {
         LOGE("[ERROR] : Can Not Open File : %s",filename.c_str());
     }
 
-    fs["Param"]>>param;
+    fs["USB_Param"]>>param[0];
+    fs["Realsense_Param"]>>param[1];
+
+    angle_map = imread("../resource/angle_map.jpg", IMREAD_GRAYSCALE);
+    distance_map = imread("../resource/distance_map.jpg", IMREAD_GRAYSCALE);
 
     fs.release();
 
     is_find_target = false;
+    is_get_putback_position = false;
+    is_get_clamp_position = false;
+
+    distance_sum = 0;
+    distance_count = 0;
+    distance_filter_full_flag = false;
+
 }
 void Detector::detect_target(const Mat &frame, int mission_state)
 {
     is_find_target = false;
+
+    distance_count = 0;
+    distance_sum = 0;
+    distance_filter_full_flag = false;
+
+    angle_sum = 0;
+    angle_count = 0;
+    angle_filter_full_flag = false;
 
     input_blob = blobFromImage(frame, 1 / 255.F, Size(320, 320), Scalar(), true, false);//输入图像设置，input为32的整数倍，不同尺寸速度不同精度不同
 
@@ -135,6 +145,7 @@ void Detector::detect_target(const Mat &frame, int mission_state)
     if(boxes.empty())
     {
         is_find_target = false;
+        return;
     }
 
     //---------------------------非极大抑制---------------------------
@@ -155,7 +166,7 @@ void Detector::detect_target(const Mat &frame, int mission_state)
 
         if(mission_state == NEARING)
         {
-            if(fabs(target_bottom_middle_x) > FRAME_WIDTH/10)
+            if(fabs(target_bottom_middle_x) > FRAME_WIDTH/20)
                 continue;
         }
 
@@ -164,15 +175,19 @@ void Detector::detect_target(const Mat &frame, int mission_state)
             target_index = indice;
             min_dis_target2bottom_middle_center = target_bottom_middle_x*target_bottom_middle_x + target_bottom_middle_y*target_bottom_middle_y;
         }
+
     }
 
     target_box = boxes[target_index];
-    target_type = class_ids[target_index];
+    target_type = class_ids[target_index] + 1;
     target_confidence = confidences[target_index];
 
-    distance = measure_distance(target_box.x + target_box.width/2, target_box.y + target_box.height, x, y, z);
+    distance = measure_distance(target_box.x + target_box.width/2, target_box.y + target_box.height, x, y, z, 1);
 
-    angle = atan(x/z)*57.29578;
+    angle = atan(1.0*x/z)*57.29578;
+    LOGM("Pixel X: %d\tPixel Y : %d", target_box.x + target_box.width/2, target_box.y + target_box.height);
+
+    LOGM("X: %f\tY: %f\tZ: %f\tDIS : %lf\t ANGLE : %lf",x, y ,z, distance, angle);
 
     is_find_target = true;
 }
@@ -186,15 +201,69 @@ void Detector::if_get_clamp_position()
     if(!is_find_target)
         is_get_clamp_position = false;
 
-    Point2i target_box_center = target_box.tl() + Point2i (target_box.width / 2, target_box.height / 2);
+    double cur_distance, cur_angle;
 
-    if(fabs(target_box_center.x - 320) < 50 && fabs(target_box_center.y - 240) < 50)
-            is_get_clamp_position = true;
-    else
+    Point2i target_box_bottom_middle = target_box.tl() + Point2i (target_box.width / 2, target_box.height);
+
+    cur_angle = angle_map.at<uchar>(target_box_bottom_middle.x, target_box_bottom_middle.y);
+
+    if(target_box_bottom_middle.x < 305.5875)
+        cur_angle = -cur_angle;
+
+    cur_distance = distance_map.at<uchar>(target_box_bottom_middle.x, target_box_bottom_middle.y);
+
+    if(cur_distance == 255)
+        cur_distance = -5;
+
+    if(!distance_filter_full_flag)
     {
-        angle = angle_map.at<uchar>(target_box_center.x, target_box_center.y);
-        distance = distance_map.at<uchar>(target_box_center.x, target_box_center.y);
+        distance_array[distance_count++] = cur_distance;
+        distance_sum += cur_distance;
+
+        distance = distance_sum/ distance_count;
+    } else if(distance_filter_full_flag)
+    {
+        distance_sum -= distance_array[distance_count];
+
+        distance_array[distance_count++] = cur_distance;
+
+        distance_sum += cur_distance;
+
+        distance = distance_sum / distance_length;
     }
+
+    if(distance_count == distance_length)
+        distance_filter_full_flag = true;
+
+    distance_count = distance_count % distance_length;
+
+
+    if(!angle_filter_full_flag)
+    {
+        angle_array[angle_count++] = cur_angle;
+        angle_sum += cur_angle;
+
+        angle = angle_sum/ angle_count;
+    } else if(angle_filter_full_flag)
+    {
+        angle_sum -= angle_array[angle_count];
+
+        angle_array[angle_count++] = cur_angle;
+
+        angle_sum += cur_angle;
+
+        angle = angle_sum / angle_length;
+    }
+
+    if(angle_count == angle_length)
+        angle_filter_full_flag = true;
+
+    angle_count = angle_count % angle_length;
+
+    if(fabs(angle) < 15 && fabs(distance) < 20 && distance_count > 5)
+        is_get_clamp_position = true;
+
+    LOGM("[CLAMP] : DIS : %lf\t ANGLE : %lf", distance, angle);
 
 }
 
@@ -205,7 +274,63 @@ void Detector::if_picked_up()
 
 void Detector::if_get_putback_position()
 {
+    direction = 0;
+    is_get_putback_position = 0;
 
+    switch (target_type) {
+        case SPITBALL:
+        case BOTTLE:
+            gray_binary = gray[0];
+            break;
+        case PERICARP:
+            gray_binary = gray[1];
+            break;
+        case BATTERY:
+            gray_binary = gray[2];
+            break;
+        case CUP:
+            gray_binary = gray[3];
+            break;
+        default:
+            LOGE("target Type is NOT DEFINED");
+            return;
+    }
+
+    vector<vector<Point>> contoursPoints;
+
+    RotatedRect possibleArea;
+
+    double area_angle;
+
+    findContours(gray_binary, contoursPoints, RETR_EXTERNAL, CHAIN_APPROX_NONE);
+
+#pragma omp parallel for
+    for (auto & i : contoursPoints)
+    {
+        if (i.size() < 5)
+            continue;
+
+        double length = arcLength(i, true);
+
+        if (length > 10 && length < 4000) {
+            possibleArea = fitEllipse(i);
+
+            area_angle = (possibleArea.angle > 90.0f) ? (possibleArea.angle - 180.0f) : (possibleArea.angle);
+
+            if(fabs(area_angle) >= 20)continue;
+
+            if(possibleArea.center.x < param[1].at<double>(5, 0) - 30)
+                direction = 1;
+            else if(possibleArea.center.x > param[1].at<double>(5, 0) + 30)
+                direction = 2;
+            else
+                is_get_putback_position = 1;
+        }
+
+        return;
+    }
+
+    LOGW("Not Found Any Area to Put Down Target");
 }
 
 float Detector::get_target_distance()

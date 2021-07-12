@@ -76,7 +76,7 @@ bool Serial::init_port(int speed, char event, int bits, int stop){
  * @return none
  */
 void Serial::pack(const uint8_t index, const float distance, const float angle, const uint8_t is_get_clamp_position,
-                  const uint8_t is_get_putback_position, const uint8_t mission_state)
+                  const uint8_t is_get_putback_position, const uint8_t mission_state, uint8_t target_type, uint8_t direction)
 {
     unsigned char *p;
     memset(buff, 0, VISION_LENGTH);
@@ -89,6 +89,8 @@ void Serial::pack(const uint8_t index, const float distance, const float angle, 
     memcpy(buff + 10, &is_get_clamp_position, 1);
     memcpy(buff + 11, &is_get_putback_position, 1);
     memcpy(buff + 12, &mission_state, 1);
+    memcpy(buff + 13, &target_type, 1);
+    memcpy(buff + 14, &direction, 1);
 
     buff[VISION_LENGTH - 1] = VISION_TOF;
 }
@@ -168,7 +170,8 @@ bool Serial::read_data(struct ReceiveData &buffer){
         memcpy(&buffer.y,buff_read + 6,4);
         memcpy(&buffer.angle,buff_read + 10,4);
         memcpy(&buffer.is_clamped,buff_read + 14,1);
-        memcpy(&buffer.is_turning,buff_read + 15,1);
+        memcpy(&buffer.is_front_area,buff_read + 15,1);
+        memcpy(&buffer.is_turning,buff_read + 16,1);
         return true;
     }
 

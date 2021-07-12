@@ -116,7 +116,7 @@ bool realSenseDriver::Grab(Mat& src)
     src_depth = Mat(Size(IMAGEWIDTH,IMAGEHEIGHT), CV_16U,(void*)frame_depth.get_data(),Mat::AUTO_STEP);
     src_color =  Mat(Size(IMAGEWIDTH,IMAGEHEIGHT), CV_8UC3,(void*)frame_color.get_data(),Mat::AUTO_STEP);
 
-    flip(src_color,src,-1);
+    src = src_color;
     if(src_color.empty())
         return false;
     return true;

@@ -28,9 +28,9 @@
 
 /**---------------------------------------SEND DATA PROTOCOL--------------------------------------------**/
 /**    ----------------------------------------------------------------------------------------------------
-FIELD  |  A5  |  index  |  distance  |  angle  |  is_get_clamp_position  |  is_get_putback_position  |  mission_state  |  target_type  |  blank  |  A6  |
+FIELD  |  A5  |  index  |  distance  |  angle  |  is_get_clamp_position  |  is_get_release_position  |  mission_state  |  target_type  |  direction |  blank  |  A6  |
        ----------------------------------------------------------------------------------------------------
-BYTE   |   1  |    1    |     4      |    4    |           1             |             1             |        1        |       1       |   5     |   1  |
+BYTE   |   1  |    1    |     4      |    4    |           1             |             1             |        1        |       1       |    1       |   4     |   1  |
        ----------------------------------------------------------------------------------------------------
 **/
 /**---------------------------------------SEND DATA PROTOCOL--------------------------------------------**/
@@ -38,9 +38,9 @@ BYTE   |   1  |    1    |     4      |    4    |           1             |      
 
 /**---------------------------------------RECEIVE DATA PROTOCOL----------------------------------------**/
 /**    -----------------------------------------------------------------------------------------------------------------------------------------
-FIELD  |  head  |  index  |  x  |  y  |  angle  |  is_clamped  |  is_turning  |  blank  |  A6  |
+FIELD  |  head  |  index  |  x  |  y  |  angle  |  is_clamped  |  is_front_area  |  is_turning  |  blank  |  A6  |
        ----------------------------------------------------------------------------------------------------
-BYTE   |   1    |    1    |  4  |  4  |    4    |      1       |      1       |   3    |  1   |
+BYTE   |   1    |    1    |  4  |  4  |    4    |      1       |        1        |      1       |    2    |  1   |
 ---------------------------------------------------------------------------------------------------------
 **/
 
@@ -60,6 +60,8 @@ struct ReceiveData
     float angle = 0;
 
     uint8_t is_clamped = false;
+
+    uint8_t  is_front_area = false;
 
     uint8_t is_turning = false;
 
@@ -89,7 +91,7 @@ public:
     explicit Serial(int speed = 115200, char event = 'N', int bits = 8, int stop = 1);
     ~Serial();
     void pack(const uint8_t index, const float distance, const float angle, const uint8_t is_get_clamp_position,
-              const uint8_t is_get_putback_position, const uint8_t mission_state);
+              const uint8_t is_get_release_position, const uint8_t mission_state, uint8_t target_type, uint8_t direction);
     bool init_port(int speed = 115200, char  event = 'N', int bits = 8, int stop = 1);
     bool write_data();
     bool read_data(struct ReceiveData& buffer);
