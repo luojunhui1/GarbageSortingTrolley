@@ -14,6 +14,7 @@
 #include <cstring>
 #include <cstdio>
 
+#include "states.h"
 #include "log.h"
 
 #define PC2STM32 "/dev/ttyUSB0"//串口位置
@@ -26,23 +27,6 @@
 //end字节,协议固定为0xA5
 #define    VISION_TOF         (0xA6)
 
-/**---------------------------------------SEND DATA PROTOCOL--------------------------------------------**/
-/**    ----------------------------------------------------------------------------------------------------
-FIELD  |  A5  |  index  |  distance  |  angle  |  is_get_clamp_position  |  is_get_release_position  |  mission_state  |  target_type  |  direction |  blank  |  A6  |
-       ----------------------------------------------------------------------------------------------------
-BYTE   |   1  |    1    |     4      |    4    |           1             |             1             |        1        |       1       |    1       |   4     |   1  |
-       ----------------------------------------------------------------------------------------------------
-**/
-/**---------------------------------------SEND DATA PROTOCOL--------------------------------------------**/
-
-
-/**---------------------------------------RECEIVE DATA PROTOCOL----------------------------------------**/
-/**    -----------------------------------------------------------------------------------------------------------------------------------------
-FIELD  |  head  |  index  |  x  |  y  |  angle  |  is_clamped  |  is_front_area  |  is_turning  |  blank  |  A6  |
-       ----------------------------------------------------------------------------------------------------
-BYTE   |   1    |    1    |  4  |  4  |    4    |      1       |        1        |      1       |    2    |  1   |
----------------------------------------------------------------------------------------------------------
-**/
 
 using namespace std;
 
@@ -53,17 +37,9 @@ struct ReceiveData
 {
     uint8_t head{};
 
-    uint8_t index{};
-
-    int x = 0;
-    int y = 0;
-    float angle = 0;
-
-    uint8_t is_clamped = false;
+    uint8_t is_clampe_complete = false;
 
     uint8_t  is_front_area = false;
-
-    uint8_t is_turning = false;
 
     uint8_t  is_putback_complete = false;
 
@@ -92,8 +68,10 @@ private:
 public:
     explicit Serial(int speed = 115200, char event = 'N', int bits = 8, int stop = 1);
     ~Serial();
-    void pack(const uint8_t index, const float distance, const float angle, const uint8_t is_get_clamp_position,
-              const uint8_t is_get_release_position, const uint8_t mission_state, uint8_t target_type, uint8_t direction);
+    void pack(float distance, float angle,uint8_t mission,
+              uint8_t is_target_found, uint8_t is_target_close, uint8_t is_target_in_center, uint8_t is_get_clamp_position,
+              uint8_t is_get_putback_position, uint8_t is_clamp_success, uint8_t target_type, uint8_t direction);
+    void pack(State state);
     bool init_port(int speed = 115200, char  event = 'N', int bits = 8, int stop = 1);
     bool write_data();
     bool read_data(struct ReceiveData& buffer);

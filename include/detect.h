@@ -33,7 +33,6 @@ private:
     std::vector<Mat> outs;
 
     Point class_id_point;
-    double confidence;
 
     vector<Rect> boxes;
     vector<int> class_ids;
@@ -44,17 +43,21 @@ private:
     Mat distance_map;
 
     double x, y, z;
-    float distance;
-    float angle;
+    double confidence;
 
 public:
     bool is_find_target;
     int target_type;
+
+    int direction;
+    int is_get_putback_position;
+    int is_picked_up;
+    int is_get_clamp_position;
+
+    float distance;
+    float angle;
     double target_confidence;
-    uint8_t is_get_clamp_position;
-    uint8_t is_picked_up;
-    uint8_t is_get_putback_position;
-    uint8_t direction;
+
     Rect target_box;
 
     RotatedRect possibleArea;
@@ -76,13 +79,14 @@ private:
 public:
     void preprocess(const Mat &frame);
     void initialize();
-    void detect_target(const Mat &frame, int mission_state);
-    void if_get_clamp_position();
-    void if_picked_up();
-    void if_get_putback_position();
+    void detect_target(const Mat &frame, int camera);
+    bool if_get_clamp_position();
+    bool if_picked_up();
+    bool if_get_putback_position();
 
     float get_target_distance();
     float get_target_angle();
+    float get_target_confidence();
 };
 
 #endif //GARBAGESORTINGTROLLEY_DETECT_H

@@ -11,6 +11,7 @@ extern uint8_t game_index;
 extern int FRAME_WIDTH;
 extern int FRAME_HEIGHT;
 
+extern std::string mission_names[];
 extern std::string target_types[];
 extern std::string cfgPath;
 extern std::string weightPath;

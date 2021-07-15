@@ -10,43 +10,25 @@
 
 class State
 {
-private:
-    int index;
-
-    int x;
-    int y;
+public:
+    float distance;
     float angle;
 
     std::uint8_t mission_state;
-    std::uint8_t clamp_state;
-    int target_type;
-    float confidence;
-    bool is_target_pickup;
+    std::uint8_t is_target_found;
+    std::uint8_t is_target_close;
+    std::uint8_t is_target_in_center;
+    std::uint8_t is_get_clamp_position;
+    std::uint8_t is_get_putback_position;
+    std::uint8_t is_clamp_success;
 
-    bool is_target_detected;
-    bool is_position_suitable;
+    std::uint8_t target_type;
+    std::uint8_t direction;
+
+    float confidence;
 
 public:
-    void set_index(int index_);
-
-    void set_x(int x);
-    void set_y(int y);
-    void set_angle(float angle);
-
-    void set_mission_state(int mission_state);
-    void set_clamp_state(int clamp_state);
-
-    void set_target_type(int target_type, double confidence);
-
-    int get_index() const;
-    int get_x() const;
-    int get_y() const;
-    int get_clamp_state() const;
-    int get_mission_state() const;
-
-    int get_target_type() const;
-    double get_target_confidence() const;
-
     void initialize();
+    void clear();
 };
 #endif //GARBAGESORTINGTROLLEY_STATES_H

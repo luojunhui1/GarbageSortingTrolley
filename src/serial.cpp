@@ -75,26 +75,50 @@ bool Serial::init_port(int speed, char event, int bits, int stop){
  * @brief package the data needed by lower computer
  * @return none
  */
-void Serial::pack(const uint8_t index, const float distance, const float angle, const uint8_t is_get_clamp_position,
-                  const uint8_t is_get_putback_position, const uint8_t mission_state, uint8_t target_type, uint8_t direction)
+void Serial::pack(const float distance, const float angle, const uint8_t mission,
+                  const uint8_t is_target_found, const uint8_t is_target_close, const uint8_t is_target_in_center,
+                  const uint8_t is_get_clamp_position, const uint8_t is_get_putback_position, const uint8_t is_clamp_success,
+                  const uint8_t target_type, const uint8_t direction)
 {
     unsigned char *p;
     memset(buff, 0, VISION_LENGTH);
 
     buff[0] = VISION_SOF;
-
-    memcpy(buff + 1, &index, 1);
-    memcpy(buff + 2, &distance, 4);
-    memcpy(buff + 6, &angle, 4);
-    memcpy(buff + 10, &is_get_clamp_position, 1);
-    memcpy(buff + 11, &is_get_putback_position, 1);
-    memcpy(buff + 12, &mission_state, 1);
-    memcpy(buff + 13, &target_type, 1);
-    memcpy(buff + 14, &direction, 1);
+    memcpy(buff + 1, &distance, 4);
+    memcpy(buff + 5, &angle, 4);
+    memcpy(buff + 9, &mission, 1);
+    memcpy(buff + 10, &is_target_found, 1);
+    memcpy(buff + 11, &is_target_close, 1);
+    memcpy(buff + 12, &is_target_in_center, 1);
+    memcpy(buff + 13, &is_get_clamp_position, 1);
+    memcpy(buff + 14, &is_get_putback_position, 1);
+    memcpy(buff + 15, &is_clamp_success, 1);
+    memcpy(buff + 16, &target_type, 1);
+    memcpy(buff + 17, &direction, 1);
 
     buff[VISION_LENGTH - 1] = VISION_TOF;
 }
 
+void Serial::pack(State state)
+{
+    unsigned char *p;
+    memset(buff, 0, VISION_LENGTH);
+
+    buff[0] = VISION_SOF;
+    memcpy(buff + 1, &state.distance, 4);
+    memcpy(buff + 5, &state.angle, 4);
+    memcpy(buff + 9, &state.mission_state, 1);
+    memcpy(buff + 10, &state.is_target_found, 1);
+    memcpy(buff + 11, &state.is_target_close, 1);
+    memcpy(buff + 12, &state.is_target_in_center, 1);
+    memcpy(buff + 13, &state.is_get_clamp_position, 1);
+    memcpy(buff + 14, &state.is_get_putback_position, 1);
+    memcpy(buff + 15, &state.is_clamp_success, 1);
+    memcpy(buff + 16, &state.target_type, 1);
+    memcpy(buff + 17, &state.direction, 1);
+
+    buff[VISION_LENGTH - 1] = VISION_TOF;
+}
 /**
  * @brief write data to port
  * @return always should be true
@@ -166,14 +190,9 @@ bool Serial::read_data(struct ReceiveData &buffer){
     }
     else
     {
-        memcpy(&buffer.index,buff_read + 1,1);
-        memcpy(&buffer.x,buff_read + 2,4);
-        memcpy(&buffer.y,buff_read + 6,4);
-        memcpy(&buffer.angle,buff_read + 10,4);
-        memcpy(&buffer.is_clamped,buff_read + 14,1);
-        memcpy(&buffer.is_front_area,buff_read + 15,1);
-        memcpy(&buffer.is_turning,buff_read + 16,1);
-        memcpy(&buffer.is_putback_complete,buff_read + 17,1);
+        memcpy(&buffer.is_clampe_complete,buff_read + 1,1);
+        memcpy(&buffer.is_front_area,buff_read + 2,1);
+        memcpy(&buffer.is_putback_complete,buff_read + 3,1);
         return true;
     }
 

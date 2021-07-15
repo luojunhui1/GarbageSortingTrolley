@@ -9,6 +9,8 @@
 #include <opencv2/highgui.hpp>
 #include <opencv2/core.hpp>
 
+#include <omp.h>
+
 #include "data.h"
 #include "detect.h"
 #include "states.h"
@@ -23,15 +25,15 @@ using namespace cv;
 int main()
 {
     //declare and initialize SUB UVC protocol camera
-    VideoCapture cap(0);
+    VideoCapture usb_cap(0);
 
-    cap.set(CAP_PROP_FPS , 30);//高度
+    usb_cap.set(CAP_PROP_FPS , 30);//高度
 
-    cap.set(CAP_PROP_FRAME_WIDTH , 640);//宽度
+    usb_cap.set(CAP_PROP_FRAME_WIDTH , 640);//宽度
 
-    cap.set(CAP_PROP_FRAME_HEIGHT, 480);//高度
+    usb_cap.set(CAP_PROP_FRAME_HEIGHT, 480);//高度
 
-    cap.set(CAP_PROP_FOURCC , VideoWriter::fourcc('M','J','P','G'));//高度
+    usb_cap.set(CAP_PROP_FOURCC , VideoWriter::fourcc('M', 'J', 'P', 'G'));//高度
 
 
     //declare and initialize realsense camera
@@ -44,141 +46,205 @@ int main()
     deep_cap.StartGrab();
 
     //declare and initialize detector and serial
-    Detector detector;
+    Detector usb_detector, deep_detector;
+
+    usb_detector.initialize();
+
+    deep_detector.initialize();
 
     Serial serial;
-
-    detector.initialize();
 
     serial.init_port();
 
     //declare and initialize variables
-    Mat src,dst;
+    Mat deep_src,dst;
 
-    Mat src1, dst1;
+    Mat usb_src, dst1;
 
-    deep_cap.Grab(src);
-    cap.read(src1);
+    deep_cap.Grab(deep_src);
+    usb_cap.read(usb_src);
 
-    LOGM("UVC Camera Image Size : %d * %d", src1.cols, src1.rows);
-    LOGM("Realsense Camera Image Size : %d * %d", src.cols, src.rows);
+    LOGM("UVC Camera Image Size : %d * %d", usb_src.cols, usb_src.rows);
+    LOGM("Realsense Camera Image Size : %d * %d", deep_src.cols, deep_src.rows);
 
     ReceiveData receive_data{};
 
-    int mission_state = DETECTING;
-
-    int last_target_type = NOTDEFINEDTYPE;
-
     stringstream ss;
+
+    //declare and initialize states
+    State state{};
+    state.initialize();
+
+    char cur_case;
 
     while(true)
     {
-        cout<<"MISSION STATE"<<mission_state<<endl;
+        LOGM("MISSION : %s", mission_names[state.mission_state].c_str());
+        int64 start = getTickCount();
+#pragma omp parallel sections default(none) shared(usb_cap, usb_src, usb_detector, deep_cap, deep_src, deep_detector)
+        {
+#pragma omp section
+            {
+                usb_cap.read(usb_src);
 
-        deep_cap.Grab(src);
+                usb_detector.detect_target(usb_src, USBCAMERA);
+            }
+#pragma omp section
+            {
+                deep_cap.read(deep_src);
 
-        if(src.empty())
-            LOGW("Src is Empty!");
+                deep_detector.detect_target(deep_src, DEEPCAMERA);
+            }
+        }
 
-//        if(receive_data.is_turning)
-//        {
-//            serial.read_data(receive_data);
-//            continue;
-//        }
+        float time = (getTickCount() - start) / getTickFrequency();
+        LOGM("Time : %lf", time);
 
-        switch (mission_state) {
+        state.clear();
+
+        cur_case = 0;
+        if(usb_detector.is_find_target)
+            cur_case = 0x01;
+        if(deep_detector.is_find_target)
+            cur_case |= 0x02;
+
+        switch (state.mission_state) {
             case DETECTING:
-                detector.detect_target(src, DETECTING);
-
-                if(detector.is_find_target)
+                if(cur_case == 3)
                 {
-                    mission_state = NEARING;
-                    // detect if the target is always he same
+                    if (usb_detector.target_confidence > deep_detector.target_confidence)
+                        cur_case = 1;
+                    else
+                        cur_case = 2;
+                }
 
-                    if(last_target_type != detector.target_type)
-                        LOGW("Target Type Changed from %s to %s", target_types[last_target_type].c_str()
-                        , target_types[detector.target_type].c_str());
-
-                    last_target_type = detector.target_type;
-
-                    rectangle(src, detector.target_box,Scalar(0,0,255, 1), 2);
+                switch (cur_case) {
+                    case 0:
+                        state.is_target_found = false;
+                        break;
+                    case 1:
+                        state.is_target_found = true;
+                        state.is_target_close = true;
+                        state.angle = usb_detector.angle;
+                        state.distance = usb_detector.distance;
+                        state.target_type = usb_detector.target_type;
+                        state.mission_state = NEARING2;
+                        break;
+                    case 2:
+                        state.is_target_found = true;
+                        state.angle = deep_detector.angle;
+                        state.distance = deep_cap.measure(deep_detector.target_box);
+                        state.target_type = deep_detector.target_type;
+                        state.mission_state = NEARING1;
+                        break;
+                    default:
+                        break;
                 }
                 break;
-            case NEARING:
-                // detector.detect_target(src, NEARING);
-                // read from usb
-                cap.read(src1);
-                //detector1.preprocess(src1);
-                detector.detect_target(src1,NOTDEFINEDMISSION);
 
-                if(detector.is_find_target) {
-                    LOGM("Claw Area Nearing Target %s", target_types[detector.target_type].c_str());
+            case NEARING1:
+                if((cur_case&0x1) > 0)
+                {
+                    if(state.target_type != usb_detector.target_type)
+                        LOGW("Target Changed from %s to %s", target_types[state.target_type].c_str(), target_types[usb_detector.target_type].c_str());
 
-                    detector.if_get_clamp_position();
+                    state.is_target_found = true;
+                    state.is_target_close = true;
+                    state.angle = usb_detector.angle;
+                    state.distance = usb_detector.distance;
+                    state.target_type = usb_detector.target_type;
+                    state.mission_state = NEARING2;
+                    break;
+                }
 
-                    rectangle(src1, detector.target_box,Scalar(0,255,255, 1), 2);
+                if(cur_case >= 2)
+                {
+                    state.is_target_found = true;
+                    state.angle = deep_detector.angle;
+                    state.distance = deep_cap.measure(deep_detector.target_box);
+                    state.target_type = deep_detector.target_type;
+                }
+                else if(cur_case == 0)
+                {
+                    state.is_target_found = false;
+                    state.mission_state = DETECTING;
+                }
 
-                    if (detector.is_get_clamp_position) {
-                        mission_state = PICKING_UP;
-                    }
+                break;
+            case NEARING2:
+                if((cur_case&0x1) == 0)
+                {
+                    state.is_target_found = false;
+                    state.mission_state = DETECTING;
                 }
                 else
                 {
-                    LOGM("Claw Area Not Found Any Target");
-                    detector.detect_target(src, NEARING);
+                    state.is_target_found = true;
 
-                    rectangle(src, detector.target_box,Scalar(0,0,255, 1), 2);
+                    usb_detector.if_get_clamp_position();
+
+                    if(fabs(usb_detector.angle) < 10)
+                    {
+                        state.is_target_in_center = true;
+
+                        if(fabs(usb_detector.distance) < 25)
+                        {
+                            state.is_get_clamp_position = true;
+                            state.mission_state = PICKUP;
+                        }
+                    }
+
                 }
-
-                circle(src1,detector.target_box.tl() + Point2i (detector.target_box.width / 2, detector.target_box.height), 3, Scalar(0,0,255),  -1);
-
-#ifdef DEBUG_
-                pyrDown(src1, src1);
-                imshow("src1", src1);
-#endif
                 break;
-            case PICKING_UP:
-                detector.if_picked_up();
-                if(receive_data.is_clamped && detector.is_picked_up)
+            case PICKUP:
+                if(!receive_data.is_clampe_complete)
+                    continue;
+                if(usb_detector.if_picked_up())
                 {
-                    mission_state = PUTTING_BACK;
+                    state.is_clamp_success = true;
+                    state.mission_state = PUTBACK;
+                }
+                else
+                {
+                    state.is_clamp_success = false;
+                    state.mission_state = NEARING2;
                 }
                 break;
-            case PUTTING_BACK:
+            case PUTBACK:
+                if(!receive_data.is_front_area)
+                    continue;
 
                 if(receive_data.is_putback_complete)
-                    mission_state = DETECTING;
-
-                if(!receive_data.is_front_area)
+                {
+                    state.mission_state = DETECTING;
                     break;
+                }
+                deep_detector.preprocess(deep_src);
+                deep_detector.if_get_putback_position();
 
-                detector.preprocess(src);
-
-                detector.if_get_putback_position();
-
+                state.direction = deep_detector.direction;
+                state.is_get_putback_position = deep_detector.is_get_putback_position;
                 break;
-            case NOTDEFINEDMISSION:
-                LOGW("Mission has Not Defined or Not Began");
+            default:
                 break;
         }
 
-        serial.pack(game_index, detector.get_target_distance(), detector.get_target_angle(),
-                    detector.is_get_clamp_position, detector.2, mission_state, detector.target_type, detector.direction);
+        serial.pack(state);
         serial.write_data();
 
         serial.read_data(receive_data);
 #ifdef DEBUG_
 
-        circle(src,detector.possibleArea.center, 3, Scalar(0,0,255),  -1);
+        rectangle(deep_src, deep_detector.target_box, Scalar(0, 0, 255));
+        rectangle(usb_src, usb_detector.target_box, Scalar(0, 0, 255));
 
-        pyrDown(src, src);
+        imshow("deep", deep_src);
+        imshow("usb", usb_src);
 
-        imshow("src", src);
-
-
-        if(waitKey() == 27)
-           break;
+        if(waitKey(10) == 27)
+            break;
 #endif
+
     }
     return 0;
-}
+}}

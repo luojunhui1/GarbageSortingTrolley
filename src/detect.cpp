@@ -99,24 +99,15 @@ void Detector::initialize()
 
     distance_sum = 0;
     distance_count = 0;
+    angle_count = 0;
     distance_filter_full_flag = false;
     direction = 0;
 
+    target_type = NOTDEFINEDTYPE;
 }
-void Detector::detect_target(const Mat &frame, int mission_state)
+void Detector::detect_target(const Mat &frame, int camera)
 {
     is_find_target = false;
-
-    if(mission_state == DETECTING)
-    {
-        distance_count = 0;
-        distance_sum = 0;
-        distance_filter_full_flag = false;
-
-        angle_sum = 0;
-        angle_count = 0;
-        angle_filter_full_flag = false;
-    }
 
     input_blob = blobFromImage(frame, 1 / 255.F, Size(320, 320), Scalar(), true, false);//输入图像设置，input为32的整数倍，不同尺寸速度不同精度不同
 
@@ -174,11 +165,6 @@ void Detector::detect_target(const Mat &frame, int mission_state)
         target_bottom_middle_y = FRAME_HEIGHT - boxes[indice].y + boxes[indice].height;
         target_bottom_middle_x = FRAME_WIDTH/2 - boxes[indice].x + boxes[indice].width/2;
 
-        if(mission_state == NEARING)
-        {
-            if(fabs(target_bottom_middle_x) > FRAME_WIDTH/20)
-                continue;
-        }
 
         if(target_bottom_middle_x*target_bottom_middle_x + target_bottom_middle_y*target_bottom_middle_y < min_dis_target2bottom_middle_center)
         {
@@ -192,9 +178,19 @@ void Detector::detect_target(const Mat &frame, int mission_state)
     target_type = class_ids[target_index] + 1;
     target_confidence = confidences[target_index];
 
-    distance = measure_distance(target_box.x + target_box.width/2, target_box.y + target_box.height, x, y, z, 1);
+    if(camera == DEEPCAMERA)
+    {
+        distance = measure_distance(target_box.x + target_box.width/2, target_box.y + target_box.height, x, y, z, 1);
 
-    angle = atan(1.0*x/z)*57.29578;
+        angle = atan(1.0*x/z)*57.29578;
+    }
+    else
+    {
+        distance = distance_map.at<uchar>(target_box.y + target_box.height, target_box.x + target_box.width/2);
+
+        angle = angle_map.at<uchar>(target_box.y + target_box.height, target_box.x + target_box.width/2);
+    }
+
     LOGM("Pixel X: %d\tPixel Y : %d", target_box.x + target_box.width/2, target_box.y + target_box.height);
 
     LOGM("X: %f\tY: %f\tZ: %f\tDIS : %lf\t ANGLE : %lf",x, y ,z, distance, angle);
@@ -202,16 +198,14 @@ void Detector::detect_target(const Mat &frame, int mission_state)
     is_find_target = true;
 }
 
-void Detector::if_get_clamp_position()
+bool Detector::if_get_clamp_position()
 {
     //use tracker to find the same target
 
     //set variable : is_get_clamp_position
 
-    is_get_clamp_position = false;
-
     if(!is_find_target)
-        return;
+        return false;
 
     double cur_distance, cur_angle;
 
@@ -285,19 +279,20 @@ void Detector::if_get_clamp_position()
     if(fabs(angle) < 20 && fabs(distance) < 25 && distance_count > 5)
         is_get_clamp_position = true;
 
-
     LOGM("[CLAMP] : Cur DIS : %lf\t Dis Count : %d", cur_distance, distance_count);
     LOGM("[CLAMP] : Pixel X : %d\t Pixel Y : %d", target_box_bottom_middle.x, target_box_bottom_middle.y);
     LOGM("[CLAMP] : DIS : %lf\t ANGLE : %lf", distance, angle);
 
+    return is_get_clamp_position;
 }
 
-void Detector::if_picked_up()
+bool Detector::if_picked_up()
 {
     is_picked_up = true;
+    return is_picked_up;
 }
 
-void Detector::if_get_putback_position()
+bool Detector::if_get_putback_position()
 {
     direction = 0;
     is_get_putback_position = false;
@@ -318,57 +313,40 @@ void Detector::if_get_putback_position()
             break;
         default:
             LOGE("target Type is NOT DEFINED");
-            return;
+            return false;
     }
 
-    vector<vector<Point>> contoursPoints;
+    static Mat dilate_element = getStructuringElement(MORPH_RECT, Size(5, 5));
+    dilate(gray_binary, gray_binary, dilate_element);
 
-    double area_angle;
+    Mat rows_part = gray_binary.rowRange(50, 100);
 
-    findContours(gray_binary, contoursPoints, RETR_EXTERNAL, CHAIN_APPROX_NONE);
+    Mat rows_part_border;
 
-#pragma omp parallel for
-    for (auto & i : contoursPoints)
-    {
-        if (i.size() < 5)
-            continue;
+    convertScaleAbs(rows_part, rows_part, 1.0/255, 0);
 
-        double length = arcLength(i, true);
+    Sobel(rows_part, rows_part_border, CV_16S, 1 , 0, 3, 1.0, 0, BorderTypes::BORDER_CONSTANT);
 
-        if (length > 10 && length < 4000) {
-            possibleArea = fitEllipse(i);
+    Mat cols_sum = Mat::zeros(1, 640, CV_16S);
 
-            area_angle = (possibleArea.angle > 90.0f) ? (possibleArea.angle - 180.0f) : (possibleArea.angle);
-
-            if(fabs(area_angle) >= 20)continue;
-
-            if(possibleArea.center.x < param[1].at<double>(5, 0) - 30)
-                direction = 1;
-            else if(possibleArea.center.x > param[1].at<double>(5, 0) + 30)
-                direction = 2;
-            else
-                is_get_putback_position = true;
+#pragma omp parallel for default(none) shared(FRAME_WIDTH, cols_sum, rows_part_border)
+    for (int i = 0; i < FRAME_WIDTH; i++) {
+        for (int j = 0; j < 50; j++) {
+            cols_sum.at<short>(0, i) += rows_part_border.at<short>(j, i);
         }
-
-        return;
     }
 
-#ifdef DEBUG_
-    imshow("gray[0]", gray[0]);
-    imshow("gray[1]", gray[1]);
-    imshow("gray[2]", gray[2]);
-    imshow("gray[3]", gray[3]);
-#endif
+    Point minLoc, maxLoc;
+    int average_x;
+    minMaxLoc(cols_sum, nullptr, nullptr, &minLoc, &maxLoc);
 
-    LOGW("Not Found Any Area to Put Down Target");
-}
+    average_x = (minLoc.x + maxLoc.x) / 2;
 
-float Detector::get_target_distance()
-{
-    return distance;
-}
+    if(average_x < FRAME_WIDTH/2 - 50)
+        direction = LEFT;
+    else if(average_x > FRAME_WIDTH/2 + 50)
+        direction = RIGHT;
+    else
+        is_get_putback_position = true;
 
-float Detector::get_target_angle()
-{
-    return angle;
 }
