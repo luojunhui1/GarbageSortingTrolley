@@ -1,4 +1,8 @@
 //
+// Created by root on 2021/7/15.
+//
+
+//
 // Created by root on 2021/7/11.
 //
 
@@ -25,25 +29,28 @@ using namespace cv;
 int main()
 {
     //declare and initialize SUB UVC protocol camera
-    VideoCapture usb_cap(0);
+    VideoCapture usb_cap;
+    usb_cap.open("../usb_video.avi");
 
-    usb_cap.set(CAP_PROP_FPS , 30);//高度
-
-    usb_cap.set(CAP_PROP_FRAME_WIDTH , 640);//宽度
-
-    usb_cap.set(CAP_PROP_FRAME_HEIGHT, 480);//高度
-
-    usb_cap.set(CAP_PROP_FOURCC , VideoWriter::fourcc('M', 'J', 'P', 'G'));//高度
+//    usb_cap.set(CAP_PROP_FPS , 30);//高度
+//
+//    usb_cap.set(CAP_PROP_FRAME_WIDTH , 640);//宽度
+//
+//    usb_cap.set(CAP_PROP_FRAME_HEIGHT, 480);//高度
+//
+//    usb_cap.set(CAP_PROP_FOURCC , VideoWriter::fourcc('M', 'J', 'P', 'G'));//高度
 
 
     //declare and initialize realsense camera
-    realSenseDriver deep_cap;
+    VideoCapture deep_cap;
+    deep_cap.open("../deep_video.avi");
 
-    deep_cap.InitCam();
-
-    deep_cap.SetCam();
-
-    deep_cap.StartGrab();
+//
+//    deep_cap.InitCam();
+//
+//    deep_cap.SetCam();
+//
+//    deep_cap.StartGrab();
 
     //declare and initialize detector and serial
     Detector usb_detector, deep_detector;
@@ -61,7 +68,7 @@ int main()
 
     Mat usb_src, dst1;
 
-    deep_cap.Grab(deep_src);
+    deep_cap.read(deep_src);
     usb_cap.read(usb_src);
 
     LOGM("UVC Camera Image Size : %d * %d", usb_src.cols, usb_src.rows);
@@ -75,15 +82,15 @@ int main()
     State state{};
     state.initialize();
 
-    char cur_case;
-
     int nearing2_lost_cnt = 0;
     int nearing1_found_cnt = 0;
+
+    char cur_case;
 
     while(true)
     {
         LOGM("MISSION : %s", mission_names[state.mission_state].c_str());
-//        int64 start = getTickCount();
+        int64 start = getTickCount();
 #pragma omp parallel sections default(none) shared(usb_cap, usb_src, usb_detector, deep_cap, deep_src, deep_detector, state)
         {
 #pragma omp section
@@ -94,14 +101,14 @@ int main()
             }
 #pragma omp section
             {
-                deep_cap.Grab(deep_src);
+                deep_cap.read(deep_src);
 
                 deep_detector.detect_target(deep_src, DEEPCAMERA, state.mission_state);
             }
         }
 
-//        float time = (getTickCount() - start) / getTickFrequency();
-//        LOGM("Time : %lf", time);
+        float time = (getTickCount() - start) / getTickFrequency();
+        LOGM("Time : %lf", time);
 
         state.clear();
 
@@ -112,6 +119,8 @@ int main()
             cur_case |= 0x02;
 
         LOGM("Cur Case : %x", cur_case);
+
+        state.mission_state = DETECTING;
 
         switch (state.mission_state) {
             case DETECTING:
@@ -143,11 +152,10 @@ int main()
                         nearing1_found_cnt++;
                         state.is_target_found = true;
                         state.angle = deep_detector.angle;
-                        deep_cap.measure(deep_detector.target_box);
-                        state.distance = deep_cap.dist;
+                        state.distance = deep_detector.distance;
                         state.target_type = deep_detector.target_type;
 
-                        usb_detector.init_kalman_filter();
+//                        usb_detector.init_kalman_filter();
 
                         state.mission_state = NEARING1;
                         break;
@@ -167,7 +175,7 @@ int main()
                     state.angle = usb_detector.angle;
                     state.distance = usb_detector.distance;
                     state.target_type = usb_detector.target_type;
-                    usb_detector.init_kalman_filter();
+//                    usb_detector.init_kalman_filter();
                     state.mission_state = NEARING2;
                     break;
                 }
@@ -176,16 +184,15 @@ int main()
                 {
                     state.is_target_found = true;
                     state.angle = deep_detector.angle;
-                    deep_cap.measure(deep_detector.target_box);
-                    state.distance = deep_cap.dist;
+                    state.distance = deep_detector.distance;
                     state.target_type = deep_detector.target_type;
                 }
                 else if(cur_case == 0)
                 {
                     state.is_target_found = false;
                     state.mission_state = DETECTING;
-                    usb_detector.init_kalman_filter();
-                    deep_detector.init_kalman_filter();
+//                    usb_detector.init_kalman_filter();
+//                    deep_detector.init_kalman_filter();
                 }
 
                 break;
@@ -221,7 +228,7 @@ int main()
                         if(usb_detector.is_get_clamp_position)
                         {
                             state.is_get_clamp_position = true;
-                            usb_detector.init_kalman_filter();
+//                            usb_detector.init_kalman_filter();
                             state.mission_state = PICKUP;
                         }
                     }
@@ -270,15 +277,20 @@ int main()
         serial.write_data();
 
         serial.read_data(receive_data);
+
+
 #ifdef DEBUG_
 
-        rectangle(deep_src, deep_detector.target_box, Scalar(0, 0, 255));
-        rectangle(usb_src, usb_detector.target_box, Scalar(0, 0, 255));
+        rectangle(deep_src, deep_detector.target_box, Scalar(0, 0, 255), 2);
+        rectangle(usb_src, usb_detector.target_box, Scalar(0, 0, 255), 2);
+
+        rectangle(deep_src, deep_detector.predict_box, Scalar(255, 0, 0),2);
+        rectangle(usb_src, usb_detector.predict_box, Scalar(255, 0, 0),2);
 
         imshow("deep", deep_src);
         imshow("usb", usb_src);
 
-        if(waitKey(10) == 27)
+        if(waitKey() == 27)
             break;
 #endif
 

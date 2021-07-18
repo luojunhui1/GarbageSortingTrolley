@@ -66,11 +66,22 @@ void Detector::preprocess(const Mat &frame)
     inRange(hsv_frame, Scalar(47,0, 64), Scalar(127, 72, 141), gray[3]);
 }
 
+void Detector::init_kalman_filter()
+{
+    kalman_filter.init(4, 2, 0);
+    kalman_filter.transitionMatrix = (Mat_<float>(4, 4) << 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 0.5, 0, 0, 0, 0, 0.5);
+    setIdentity(kalman_filter.measurementMatrix);
+    setIdentity(kalman_filter.processNoiseCov, Scalar::all(1e-5));
+    setIdentity(kalman_filter.measurementNoiseCov, Scalar::all(1e-1));
+    setIdentity(kalman_filter.errorCovPost, Scalar::all(1));
+
+    predict_count = 10;
+}
 void Detector::initialize()
 {
     net =Net(DetectionModel(cfgPath, weightPath));
     net.setPreferableBackend(DNN_BACKEND_CUDA);
-    net.setPreferableTarget(DNN_TARGET_CUDA_FP16);
+    net.setPreferableTarget(DNN_TARGET_CUDA);
     out_names = net.getUnconnectedOutLayersNames();
 
     for (int i = 0; i < out_names.size(); i++)
@@ -104,10 +115,27 @@ void Detector::initialize()
     direction = 0;
 
     target_type = NOTDEFINEDTYPE;
+
+    last_target_mb = Point2i (FRAME_WIDTH / 2, FRAME_HEIGHT);
+
+    kalman_state = Mat(4, 1, CV_32FC1);
+    kalman_process_noise = Mat(4, 1, CV_32F);
+    measurement = Mat::zeros(2, 1, CV_32F);
+
+    init_kalman_filter();
+
+    randn( kalman_state, Scalar::all(0), Scalar::all(0.1) );
+    randn(kalman_filter.statePost, Scalar::all(0), Scalar::all(0.1));
+
+    predict_box = Rect(0, 0, 1, 1);
+
 }
-void Detector::detect_target(const Mat &frame, int camera)
+void Detector::detect_target(const Mat &frame, int camera, uint8_t mission_mode)
 {
     is_find_target = false;
+
+    if(mission_mode > NEARING2)
+       return;
 
     input_blob = blobFromImage(frame, 1 / 255.F, Size(320, 320), Scalar(), true, false);//输入图像设置，input为32的整数倍，不同尺寸速度不同精度不同
 
@@ -143,40 +171,85 @@ void Detector::detect_target(const Mat &frame, int camera)
         }
     }
 
-    if(boxes.empty())
-    {
-        is_find_target = false;
-        return;
-    }
-
     //---------------------------非极大抑制---------------------------
-    NMSBoxes(boxes, confidences, 0.5, 0.5, indices);
+    if(mission_mode == DETECTING)
+        NMSBoxes(boxes, confidences, 0.5, 0.5, indices);
+    else
+        NMSBoxes(boxes, confidences, 0.8, 0.5, indices);
 
-    target_type = NOTDEFINEDTYPE;
-    target_confidence = 0;
 
-    int target_index = indices[0];
-
-    int target_bottom_middle_y, target_bottom_middle_x;
-    int min_dis_target2bottom_middle_center = 1<<30;
-
-    for (int indice : indices)
+    if(indices.empty())
     {
-        target_bottom_middle_y = FRAME_HEIGHT - boxes[indice].y + boxes[indice].height;
-        target_bottom_middle_x = FRAME_WIDTH/2 - boxes[indice].x + boxes[indice].width/2;
-
-
-        if(target_bottom_middle_x*target_bottom_middle_x + target_bottom_middle_y*target_bottom_middle_y < min_dis_target2bottom_middle_center)
+        if(predict_count > 5)
         {
-            target_index = indice;
-            min_dis_target2bottom_middle_center = target_bottom_middle_x*target_bottom_middle_x + target_bottom_middle_y*target_bottom_middle_y;
+            is_find_target = false;
+            last_target_mb = Point2i (FRAME_WIDTH / 2, FRAME_HEIGHT);
+            return;
+        }
+        else
+        {
+            is_find_target = true;
+
+            prediction = kalman_filter.predict();
+            predict_point = Point( (int)prediction.at<float>(0), (int)prediction.at<float>(1));
+
+            predict_count++;
+
+            target_box = target_box + predict_point - last_target_mb;
+            last_target_mb = predict_point;
+        }
+    }
+    else
+    {
+        predict_count = 0;
+
+        target_type = NOTDEFINEDTYPE;
+        target_confidence = 0;
+
+        int target_index = indices[0];
+
+        int diff_y, diff_x;
+        int diff_dis = 1 << 30;
+
+        for (int indice : indices)
+        {
+            diff_y = last_target_mb.y - (boxes[indice].y + boxes[indice].height);
+            diff_x = last_target_mb.x - (boxes[indice].x + boxes[indice].width / 2);
+
+            if(diff_x * diff_x + diff_y * diff_y < diff_dis)
+            {
+                target_index = indice;
+                diff_dis = diff_x * diff_x + diff_y * diff_y;
+            }
+
         }
 
+        if(class_ids[target_index] + 1 == target_type || target_type == NOTDEFINEDTYPE)
+        {
+            prediction = kalman_filter.predict();
+            measurement.at<float>(0)= last_target_mb.x;
+            measurement.at<float>(1) = last_target_mb.y;
+            kalman_filter.correct(measurement);
+            LOGE("correct kalman filter");
+        }
+        else
+        {
+            init_kalman_filter();
+            LOGE("%d , init kalman filter", camera);
+        }
+
+        target_box = boxes[target_index];
+        last_target_mb = target_box.tl() + Point2i(target_box.width / 2, target_box.height);
+        target_type = class_ids[target_index] + 1;
+        target_confidence = confidences[target_index];
     }
 
-    target_box = boxes[target_index];
-    target_type = class_ids[target_index] + 1;
-    target_confidence = confidences[target_index];
+    predict_point = Point( (int)prediction.at<float>(0), (int)prediction.at<float>(1));
+
+    cout<<predict_point.x<<" "<<predict_point.y<<endl;
+    cout<<last_target_mb.x<<" "<<last_target_mb.y<<endl;
+    cout<<"==========================="<<endl;
+    predict_box = target_box + predict_point - last_target_mb;
 
     if(camera == DEEPCAMERA)
     {
@@ -188,12 +261,15 @@ void Detector::detect_target(const Mat &frame, int camera)
     {
         distance = distance_map.at<uchar>(target_box.y + target_box.height, target_box.x + target_box.width/2);
 
+        if(distance == 255)
+            distance = -5;
+
         angle = angle_map.at<uchar>(target_box.y + target_box.height, target_box.x + target_box.width/2);
     }
 
-    LOGM("Pixel X: %d\tPixel Y : %d", target_box.x + target_box.width/2, target_box.y + target_box.height);
+//    LOGM("Pixel X: %d\tPixel Y : %d", target_box.x + target_box.width/2, target_box.y + target_box.height);
 
-    LOGM("X: %f\tY: %f\tZ: %f\tDIS : %lf\t ANGLE : %lf",x, y ,z, distance, angle);
+//    LOGM("X: %f\tY: %f\tZ: %f\tDIS : %lf\t ANGLE : %lf",x, y ,z, distance, angle);
 
     is_find_target = true;
 }
@@ -204,6 +280,8 @@ bool Detector::if_get_clamp_position()
 
     //set variable : is_get_clamp_position
 
+    is_get_clamp_position = false;
+
     if(!is_find_target)
         return false;
 
@@ -211,13 +289,13 @@ bool Detector::if_get_clamp_position()
 
     Point2i target_box_bottom_middle = target_box.tl() + Point2i (target_box.width / 2, target_box.height);
 
-    if(target_box_bottom_middle.x >= 640)
-        target_box_bottom_middle.x = 639;
+    if(target_box_bottom_middle.x >= FRAME_WIDTH)
+        target_box_bottom_middle.x = FRAME_WIDTH - 1;
     else if(target_box_bottom_middle.x < 0)
         target_box_bottom_middle.x = 0;
 
-    if(target_box_bottom_middle.y >= 480)
-        target_box_bottom_middle.y = 479;
+    if(target_box_bottom_middle.y >= FRAME_HEIGHT)
+        target_box_bottom_middle.y = FRAME_HEIGHT - 1;
     else if(target_box_bottom_middle.y < 0)
         target_box_bottom_middle.y = 0;
 
@@ -279,9 +357,8 @@ bool Detector::if_get_clamp_position()
     if(fabs(angle) < 20 && fabs(distance) < 25 && distance_count > 5)
         is_get_clamp_position = true;
 
-    LOGM("[CLAMP] : Cur DIS : %lf\t Dis Count : %d", cur_distance, distance_count);
-    LOGM("[CLAMP] : Pixel X : %d\t Pixel Y : %d", target_box_bottom_middle.x, target_box_bottom_middle.y);
     LOGM("[CLAMP] : DIS : %lf\t ANGLE : %lf", distance, angle);
+    LOGM("[CLAMP] : TARGET_TYPE : %s", target_types[target_type].c_str());
 
     return is_get_clamp_position;
 }

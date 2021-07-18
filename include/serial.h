@@ -1,3 +1,10 @@
+/*
+ * @Descriptions: 
+ * @Author: Junhui Luo
+ * @Blog: https://luojunhui1.github.io/
+ * @Date: 2021-07-16 19:29:26
+ * @LastEditTime: 2021-07-16 19:34:46
+ */
 //
 // Created by root on 2021/6/19.
 //
@@ -37,7 +44,7 @@ struct ReceiveData
 {
     uint8_t head{};
 
-    uint8_t is_clampe_complete = false;
+    uint8_t is_clamp_complete = false;
 
     uint8_t  is_front_area = false;
 
@@ -70,7 +77,7 @@ public:
     ~Serial();
     void pack(float distance, float angle,uint8_t mission,
               uint8_t is_target_found, uint8_t is_target_close, uint8_t is_target_in_center, uint8_t is_get_clamp_position,
-              uint8_t is_get_putback_position, uint8_t is_clamp_success, uint8_t target_type, uint8_t direction);
+              uint8_t is_clamp_success, uint8_t is_get_putback_position, uint8_t target_type, uint8_t direction);
     void pack(State state);
     bool init_port(int speed = 115200, char  event = 'N', int bits = 8, int stop = 1);
     bool write_data();

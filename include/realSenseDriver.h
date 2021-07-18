@@ -70,6 +70,6 @@ private:
     cv::Mat src_4_show;
     rs2::frameset data;
 public:
-    float dist2Armor;
+    float dist;
 };
 #endif //INFANTRY_REALSENSEDRIVER_H

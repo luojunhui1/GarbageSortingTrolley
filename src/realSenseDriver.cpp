@@ -230,8 +230,7 @@ void realSenseDriver::measure_distance(Mat &color, Mat depth, rs2::pipeline_prof
         }
     }
 
-    dist2Armor = distance_sum/effective_pixel;
-
+    dist = distance_sum / effective_pixel * 100;
 }
 
 bool realSenseDriver::StopGrab()

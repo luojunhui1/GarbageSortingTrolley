@@ -24,9 +24,6 @@ void State::initialize()
 
 void State::clear()
 {
-    distance = 0;
-    angle = 0;
-
     is_target_found = false;
     is_target_close = false;
     is_target_in_center = false;
@@ -34,7 +31,6 @@ void State::clear()
     is_get_putback_position = false;
     is_clamp_success = false;
 
-    target_type = NOTDEFINEDTYPE;
     direction = NOTDEFINEDDIRECTION;
 
     confidence = 0;

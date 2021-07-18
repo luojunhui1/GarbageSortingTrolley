@@ -77,7 +77,7 @@ bool Serial::init_port(int speed, char event, int bits, int stop){
  */
 void Serial::pack(const float distance, const float angle, const uint8_t mission,
                   const uint8_t is_target_found, const uint8_t is_target_close, const uint8_t is_target_in_center,
-                  const uint8_t is_get_clamp_position, const uint8_t is_get_putback_position, const uint8_t is_clamp_success,
+                  const uint8_t is_get_clamp_position, const uint8_t is_clamp_success, const uint8_t is_get_putback_position,
                   const uint8_t target_type, const uint8_t direction)
 {
     unsigned char *p;
@@ -91,8 +91,8 @@ void Serial::pack(const float distance, const float angle, const uint8_t mission
     memcpy(buff + 11, &is_target_close, 1);
     memcpy(buff + 12, &is_target_in_center, 1);
     memcpy(buff + 13, &is_get_clamp_position, 1);
-    memcpy(buff + 14, &is_get_putback_position, 1);
-    memcpy(buff + 15, &is_clamp_success, 1);
+    memcpy(buff + 14, &is_clamp_success, 1);
+    memcpy(buff + 15, &is_get_putback_position, 1);
     memcpy(buff + 16, &target_type, 1);
     memcpy(buff + 17, &direction, 1);
 
@@ -112,8 +112,8 @@ void Serial::pack(State state)
     memcpy(buff + 11, &state.is_target_close, 1);
     memcpy(buff + 12, &state.is_target_in_center, 1);
     memcpy(buff + 13, &state.is_get_clamp_position, 1);
-    memcpy(buff + 14, &state.is_get_putback_position, 1);
-    memcpy(buff + 15, &state.is_clamp_success, 1);
+    memcpy(buff + 14, &state.is_clamp_success, 1);
+    memcpy(buff + 15, &state.is_get_putback_position, 1);
     memcpy(buff + 16, &state.target_type, 1);
     memcpy(buff + 17, &state.direction, 1);
 
@@ -190,7 +190,7 @@ bool Serial::read_data(struct ReceiveData &buffer){
     }
     else
     {
-        memcpy(&buffer.is_clampe_complete,buff_read + 1,1);
+        memcpy(&buffer.is_clamp_complete,buff_read + 1,1);
         memcpy(&buffer.is_front_area,buff_read + 2,1);
         memcpy(&buffer.is_putback_complete,buff_read + 3,1);
         return true;
