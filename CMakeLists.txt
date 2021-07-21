@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.0)
 
 project(MASTER)
 SET(CMAKE_BUILD_TYPE DEBUG)
-SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}  -g -std=c++14 -pthread -lv4l1 -lv4l2 -lrealsense2")
+SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}  -g -std=c++14 -pthread -lv4l1 -lv4l2 -lrealsense2 -fopenmp")
 SET(BIN_NAME "run")
 
 FIND_PACKAGE(OpenCV 4.4.0 REQUIRED)
@@ -23,7 +23,7 @@ MESSAGE(STATUS "Include Path:${PROJECT_SOURCE_DIR}/include ${OpenCV_INCLUDE_DIRS
 
 FILE(GLOB_RECURSE SOURCES "src/*.cpp")
 
-ADD_EXECUTABLE(${BIN_NAME} main.cpp ${SOURCES})
+ADD_EXECUTABLE(${BIN_NAME} test.cpp ${SOURCES})
 
 TARGET_LINK_LIBRARIES(${BIN_NAME} ${realsense2_LIBRARY})
 TARGET_LINK_LIBRARIES(${BIN_NAME} ${CMAKE_THREAD_LIBS_INIT})

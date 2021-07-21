@@ -99,16 +99,19 @@ int main()
 
                 usb_detector.detect_target(usb_src, USBCAMERA, state.mission_state);
             }
-#pragma omp section
-            {
-                deep_cap.read(deep_src);
-
-                deep_detector.detect_target(deep_src, DEEPCAMERA, state.mission_state);
-            }
+//#pragma omp section
+//            {
+//                deep_cap.read(deep_src);
+//
+//                deep_detector.detect_target(deep_src, DEEPCAMERA, state.mission_state);
+//            }
         }
 
         float time = (getTickCount() - start) / getTickFrequency();
         LOGM("Time : %lf", time);
+
+        Mat distance_map = imread("../resource/distance_map.jpg");
+        Mat angle_map = imread("../resource/src1.jpg");
 
         state.clear();
 
@@ -120,7 +123,7 @@ int main()
 
         LOGM("Cur Case : %x", cur_case);
 
-        state.mission_state = DETECTING;
+        state.mission_state = NEARING2;
 
         switch (state.mission_state) {
             case DETECTING:
@@ -142,9 +145,19 @@ int main()
                         state.is_target_close = true;
                         state.angle = usb_detector.angle;
                         state.distance = usb_detector.distance;
-                        state.target_type = usb_detector.target_type;
+                        state.target_type = usb_detector.get_target_type();
 
-                        usb_detector.init_kalman_filter();
+//                        circle(usb_src, Point2i (usb_detector.target_box.x + usb_detector.target_box.width/2, usb_detector.target_box.y + usb_detector.target_box.height),
+//                               5, Scalar(0 ,255,255), -1);
+//
+//                        circle(distance_map, Point2i (usb_detector.target_box.x + usb_detector.target_box.width/2, usb_detector.target_box.y + usb_detector.target_box.height),
+//                               3, Scalar(0 ,0 ,255), -1);
+//                        circle(angle_map, Point2i (usb_detector.target_box.x + usb_detector.target_box.width/2, usb_detector.target_box.y + usb_detector.target_box.height),
+//                               3, Scalar(0 ,0 ,255), -1);
+//
+//                        ss.str("");
+//                        ss<<"angle: "<<usb_detector.angle<<" dis: "<<usb_detector.distance<<endl;
+//                        putText(angle_map, ss.str(), Point2i(20, 20), FONT_HERSHEY_SIMPLEX, 0.5, Scalar(0, 0, 255), 1);
 
                         state.mission_state = NEARING2;
                         break;
@@ -153,10 +166,7 @@ int main()
                         state.is_target_found = true;
                         state.angle = deep_detector.angle;
                         state.distance = deep_detector.distance;
-                        state.target_type = deep_detector.target_type;
-
-//                        usb_detector.init_kalman_filter();
-
+                        state.target_type = deep_detector.get_target_type();
                         state.mission_state = NEARING1;
                         break;
                     default:
@@ -174,7 +184,7 @@ int main()
                     state.is_target_close = true;
                     state.angle = usb_detector.angle;
                     state.distance = usb_detector.distance;
-                    state.target_type = usb_detector.target_type;
+                    state.target_type = usb_detector.get_target_type();
 //                    usb_detector.init_kalman_filter();
                     state.mission_state = NEARING2;
                     break;
@@ -185,14 +195,12 @@ int main()
                     state.is_target_found = true;
                     state.angle = deep_detector.angle;
                     state.distance = deep_detector.distance;
-                    state.target_type = deep_detector.target_type;
+                    state.target_type = deep_detector.get_target_type();
                 }
                 else if(cur_case == 0)
                 {
                     state.is_target_found = false;
                     state.mission_state = DETECTING;
-//                    usb_detector.init_kalman_filter();
-//                    deep_detector.init_kalman_filter();
                 }
 
                 break;
@@ -228,14 +236,14 @@ int main()
                         if(usb_detector.is_get_clamp_position)
                         {
                             state.is_get_clamp_position = true;
-//                            usb_detector.init_kalman_filter();
+//                            state.target_type = usb_detector.get_target_type();
                             state.mission_state = PICKUP;
                         }
                     }
 
                     state.distance = usb_detector.distance;
                     state.angle = usb_detector.angle;
-                    state.target_type = usb_detector.target_type;
+                    state.target_type = usb_detector.get_target_type();
                 }
                 break;
             case PICKUP:
@@ -273,22 +281,19 @@ int main()
                 break;
         }
 
-        serial.pack(state);
-        serial.write_data();
-
-        serial.read_data(receive_data);
+//        serial.pack(state);
+//        serial.write_data();
+//
+//        serial.read_data(receive_data);
 
 
 #ifdef DEBUG_
 
-        rectangle(deep_src, deep_detector.target_box, Scalar(0, 0, 255), 2);
         rectangle(usb_src, usb_detector.target_box, Scalar(0, 0, 255), 2);
 
-        rectangle(deep_src, deep_detector.predict_box, Scalar(255, 0, 0),2);
-        rectangle(usb_src, usb_detector.predict_box, Scalar(255, 0, 0),2);
-
-        imshow("deep", deep_src);
         imshow("usb", usb_src);
+//        imshow("angle", angle_map);
+//        imshow("dis", distance_map);
 
         if(waitKey() == 27)
             break;

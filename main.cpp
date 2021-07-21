@@ -100,9 +100,6 @@ int main()
             }
         }
 
-//        float time = (getTickCount() - start) / getTickFrequency();
-//        LOGM("Time : %lf", time);
-
         state.clear();
 
         cur_case = 0;
@@ -110,8 +107,6 @@ int main()
             cur_case = 0x01;
         if(deep_detector.is_find_target)
             cur_case |= 0x02;
-
-        LOGM("Cur Case : %x", cur_case);
 
         switch (state.mission_state) {
             case DETECTING:
@@ -133,10 +128,7 @@ int main()
                         state.is_target_close = true;
                         state.angle = usb_detector.angle;
                         state.distance = usb_detector.distance;
-                        state.target_type = usb_detector.target_type;
-
-                        usb_detector.init_kalman_filter();
-
+                        state.target_type = usb_detector.get_target_type();
                         state.mission_state = NEARING2;
                         break;
                     case 2:
@@ -145,10 +137,7 @@ int main()
                         state.angle = deep_detector.angle;
                         deep_cap.measure(deep_detector.target_box);
                         state.distance = deep_cap.dist;
-                        state.target_type = deep_detector.target_type;
-
-                        usb_detector.init_kalman_filter();
-
+                        state.target_type = deep_detector.get_target_type();
                         state.mission_state = NEARING1;
                         break;
                     default:
@@ -166,8 +155,7 @@ int main()
                     state.is_target_close = true;
                     state.angle = usb_detector.angle;
                     state.distance = usb_detector.distance;
-                    state.target_type = usb_detector.target_type;
-                    usb_detector.init_kalman_filter();
+                    state.target_type = usb_detector.get_target_type();
                     state.mission_state = NEARING2;
                     break;
                 }
@@ -178,14 +166,12 @@ int main()
                     state.angle = deep_detector.angle;
                     deep_cap.measure(deep_detector.target_box);
                     state.distance = deep_cap.dist;
-                    state.target_type = deep_detector.target_type;
+                    state.target_type = deep_detector.get_target_type();
                 }
                 else if(cur_case == 0)
                 {
                     state.is_target_found = false;
                     state.mission_state = DETECTING;
-                    usb_detector.init_kalman_filter();
-                    deep_detector.init_kalman_filter();
                 }
 
                 break;
@@ -221,14 +207,14 @@ int main()
                         if(usb_detector.is_get_clamp_position)
                         {
                             state.is_get_clamp_position = true;
-                            usb_detector.init_kalman_filter();
+                            state.target_type = usb_detector.get_target_type();
                             state.mission_state = PICKUP;
                         }
                     }
 
                     state.distance = usb_detector.distance;
                     state.angle = usb_detector.angle;
-                    state.target_type = usb_detector.target_type;
+
                 }
                 break;
             case PICKUP:
@@ -248,14 +234,15 @@ int main()
                 }
                 break;
             case PUTBACK:
-                if(!receive_data.is_front_area)
+                if(receive_data.is_front_area == 0x00)
                     break;
 
-                if(receive_data.is_putback_complete)
+                if(receive_data.is_putback_complete == 0x01)
                 {
                     state.mission_state = DETECTING;
                     break;
                 }
+
                 deep_detector.preprocess(deep_src);
                 deep_detector.if_get_putback_position();
 

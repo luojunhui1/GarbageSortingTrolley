@@ -6,6 +6,7 @@
 #define GARBAGESORTINGTROLLEY_DETECT_H
 
 #include <vector>
+#include <algorithm>
 
 #include <opencv2/opencv.hpp>
 #include <opencv2/core.hpp>
@@ -45,6 +46,9 @@ private:
     double x, y, z;
     double confidence;
 
+    queue<int> target_type_queue;
+    vector<int> target_type_array;
+
 public:
     bool is_find_target;
     int target_type;
@@ -59,33 +63,21 @@ public:
     double target_confidence;
 
     Rect target_box;
-
-    Rect predict_box;
 private:
-    static const int distance_length = 20;
+    static const int distance_length = 10;
 
     double distance_array[distance_length];
     double distance_sum;
     int distance_count;
     bool distance_filter_full_flag;
 
-    static const int angle_length = 50;
+    static const int angle_length = 10;
     double angle_array[angle_length];
     double angle_sum;
     int angle_count;
     bool angle_filter_full_flag;
 
     Point2i  last_target_mb;
-
-    //kalman stuff to deal with the situation that sudddenly the detector cannot find any target
-    KalmanFilter kalman_filter;
-    Mat kalman_state;
-    Mat kalman_process_noise;
-    Mat measurement;
-
-    Mat prediction;
-    Point predict_point;
-    int predict_count;
 public:
     void preprocess(const Mat &frame);
     void initialize();
@@ -94,11 +86,10 @@ public:
     bool if_picked_up();
     bool if_get_putback_position();
 
-    void init_kalman_filter();
-
     float get_target_distance();
     float get_target_angle();
     float get_target_confidence();
+    int get_target_type();
 };
 
 #endif //GARBAGESORTINGTROLLEY_DETECT_H
