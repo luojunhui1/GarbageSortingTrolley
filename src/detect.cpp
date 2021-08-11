@@ -11,8 +11,21 @@
 //    double fy; // fy = f  / dy
 //}
 
+/**
+ * 参数矩阵， 包括相机内参，相机高度，相机与水平面夹角信息
+ */
 Mat_<double> param[2];
 
+/**
+ * @brief 单目测距函数， 要求测距点必须在地面上， 参考 https://github.com/liuchangji/simple-distance-measure-by-camera
+ * @param u 测距点在图像坐标系上的x坐标
+ * @param v 测距点在图像坐标系上的y坐标
+ * @param x 测距点在相机坐标系下的x坐标
+ * @param y 测距点在相机坐标系下的y坐标
+ * @param z 测距点在相机坐标系下的z坐标
+ * @param camera_index 相机编号，多个相机的参数不相同
+ * @return 小车与测距点间的平面直线距离
+ */
 static float measure_distance(double u, double v, double &x, double &y, double &z, int camera_index)
 {
     u = u - param[camera_index].at<double>(5, 0);
@@ -21,8 +34,12 @@ static float measure_distance(double u, double v, double &x, double &y, double &
     static double angle_b, angle_c, op;
     angle_b = atan(v / param[camera_index].at<double>(4, 0))*57.325;
     angle_c = param[camera_index].at<double>(0, 0) + angle_b;
+    
     if(angle_c == 0)
-        angle_c = 0.01;
+        angle_c = 0.03;
+    else if(angle_c == 90 )
+	    angle_c = 89;
+
     op = param[camera_index].at<double>(1, 0) / tan(angle_c/57.325);
 
     z = param[camera_index].at<double>(1, 0) / sin(angle_c/57.325)*cos(angle_b/57.325);
@@ -33,6 +50,10 @@ static float measure_distance(double u, double v, double &x, double &y, double &
     return sqrt(x * x + z * z);
 }
 
+/**
+ * @brief 定时休眠函数
+ * @param secs 休眠时间（秒）
+ */
 static void sleep_ms(unsigned int secs)
 {
     struct timeval tval;
@@ -44,7 +65,10 @@ static void sleep_ms(unsigned int secs)
     select(0,NULL,NULL,NULL,&tval);
 }
 
-
+/**
+ * @brief 图像预处理， 按垃圾堆放区颜色， 将图像处理为四张分别以蓝、绿、红、灰为白色的二值图像
+ * @param frame 原图像
+ */
 void Detector::preprocess(const Mat &frame)
 {
     static Mat channels[3];
@@ -66,9 +90,23 @@ void Detector::preprocess(const Mat &frame)
     inRange(hsv_frame, Scalar(47,0, 64), Scalar(127, 72, 141), gray[3]);
 }
 
-void Detector::initialize()
+/**
+ * @brief Detector初始化， 初始化内容包括：
+ * yolo_trt_detector : yolov4/yolov4-tiny/yolov5s 到 tensorRT的转化器初始化
+ * param             : 参数矩阵初始化
+ * angle_map         : 像素-角度映射矩阵初始化
+ * distance_map      : 像素-距离映射矩阵初始化
+ * .etc              : 动作量、状态量、滤波变量、其他变量初始化
+ * @param camera 相机
+ */
+void Detector::initialize(int camera)
 {
-    net =Net(DetectionModel(cfgPath, weightPath));
+
+    //加载网络模型
+    if(camera == USBCAMERA)
+    	net =Net(DetectionModel(usb_cfg_path, usb_weight_path));
+    else
+	net =Net(DetectionModel(deep_cfg_path, deep_weight_path));
     net.setPreferableBackend(DNN_BACKEND_CUDA);
     net.setPreferableTarget(DNN_TARGET_CUDA_FP16);
     out_names = net.getUnconnectedOutLayersNames();
@@ -78,7 +116,8 @@ void Detector::initialize()
         printf("output layer name : %s\n", out_names[i].c_str());
     }
 
-    string filename ="../resource/param.xml";
+    //加载单目测距参数
+    string filename = param_path;
     FileStorage fs(filename, FileStorage::READ);
 
     if (!fs.isOpened()) {
@@ -88,11 +127,13 @@ void Detector::initialize()
     fs["USB_Param"]>>param[0];
     fs["Realsense_Param"]>>param[1];
 
-    angle_map = imread("../resource/angle_map.jpg", IMREAD_GRAYSCALE);
-    distance_map = imread("../resource/distance_map.jpg", IMREAD_GRAYSCALE);
+    //加载映射表
+    angle_map = imread(angle_map_path, IMREAD_GRAYSCALE);
+    distance_map = imread(distance_map_path, IMREAD_GRAYSCALE);
 
     fs.release();
 
+    //初始化各参数
     is_find_target = false;
     is_get_putback_position = false;
     is_get_clamp_position = false;
@@ -104,27 +145,37 @@ void Detector::initialize()
     direction = 0;
 
     target_type = NOTDEFINEDTYPE;
+    last_target_type = NOTDEFINEDTYPE;
 
     last_target_mb = Point2i (FRAME_WIDTH / 2, FRAME_HEIGHT);
-    target_type_array = vector<int>(5, 0);
+    target_type_array = vector<int>(5,0);
 }
+
+/**
+ * @brief 垃圾检测函数
+ * @param frames 由于yolo2trt库传入参数为vector<Mat>， 故也将其设计为如此吗，但在功能上与使用Mat无异
+ * @param camera 相机种类， 根据不同相机测距方案不同， 状态切换也不同
+ * @param mission_mode 当前状态
+ */
 void Detector::detect_target(const Mat &frame, int camera, uint8_t mission_mode)
 {
     is_find_target = false;
 
+    //状态大于NEARING2不需进行目标检测
     if(mission_mode > NEARING2)
        return;
-
+    //网络参数输入设置
     input_blob = blobFromImage(frame, 1 / 255.F, Size(320, 320), Scalar(), true, false);//输入图像设置，input为32的整数倍，不同尺寸速度不同精度不同
-
+    //模型参数输入
     net.setInput(input_blob);
-
+    //模型推理
     net.forward(outs, out_names);
-
+    //检测结果清除
     boxes.clear();
     class_ids.clear();
     confidences.clear();
 
+    //检测结果提取
     for (auto & out : outs)
     {
         // detected objects and C is a number of classes + 4 where the first 4
@@ -149,17 +200,21 @@ void Detector::detect_target(const Mat &frame, int camera, uint8_t mission_mode)
         }
     }
 
-    //---------------------------非极大抑制--------------------------
-    NMSBoxes(boxes, confidences, 0.5, 0.5, indices);
-
+    //非极大抑制
+    if(mission_mode == NEARING2)
+        NMSBoxes(boxes, confidences, 0.4, 0.5, indices);
+    else
+        NMSBoxes(boxes, confidences, 0.6, 0.5, indices);
 
     if(indices.empty())
     {
+        //未找到目标
         is_find_target = false;
         return;
     }
     else
     {
+        //找到目标
         target_type = NOTDEFINEDTYPE;
         target_confidence = 0;
 
@@ -168,13 +223,14 @@ void Detector::detect_target(const Mat &frame, int camera, uint8_t mission_mode)
         int diff_y, diff_x;
         int diff_dis = 1 << 30;
 
+        //选取距离最近的目标
         for (int indice : indices)
         {
-            if((boxes[indice].y + boxes[indice].height) < last_target_mb.y)
-                continue;
+//            if((boxes[indice].y + boxes[indice].height) < last_target_mb.y)
+//                continue;
 
-            diff_y = last_target_mb.y - (boxes[indice].y + boxes[indice].height);
-            diff_x = last_target_mb.x - (boxes[indice].x + boxes[indice].width / 2);
+            diff_y = FRAME_HEIGHT - (boxes[indice].y + boxes[indice].height);
+            diff_x = FRAME_WIDTH / 2 - (boxes[indice].x + boxes[indice].width / 2);
 
             if(diff_x * diff_x + diff_y * diff_y < diff_dis)
             {
@@ -187,6 +243,7 @@ void Detector::detect_target(const Mat &frame, int camera, uint8_t mission_mode)
         target_box = boxes[target_index];
         last_target_mb = target_box.tl() + Point2i(target_box.width / 2, target_box.height);
 
+        //目标种类队列和种类计数向量更新
         target_type_queue.push(class_ids[target_index]);
         target_type_array[class_ids[target_index]]++;
 
@@ -212,9 +269,13 @@ void Detector::detect_target(const Mat &frame, int camera, uint8_t mission_mode)
         target_confidence = confidences[target_index];
     }
 
+    //计算目标角度和距离
     if(camera == DEEPCAMERA)
     {
         distance = measure_distance(target_box.x + target_box.width/2, target_box.y + target_box.height, x, y, z, 1);
+	    //处理异常值
+        if(distance == NAN)
+		    distance = 1000;
 
         angle = atan(1.0*x/z)*57.29578;
     }
@@ -232,6 +293,10 @@ void Detector::detect_target(const Mat &frame, int camera, uint8_t mission_mode)
     is_find_target = true;
 }
 
+/**
+ * @brief 判断小车是否到达垃圾夹取位置，仅用于NEARING2状态
+ * @return 到达夹取位置，返回True; 未到达夹取位置，返回False
+ */
 bool Detector::if_get_clamp_position()
 {
     is_get_clamp_position = false;
@@ -243,6 +308,7 @@ bool Detector::if_get_clamp_position()
 
     Point2i target_box_bottom_middle = target_box.tl() + Point2i (target_box.width / 2, target_box.height);
 
+    //数据出界处理
     if(target_box_bottom_middle.x >= FRAME_WIDTH)
         target_box_bottom_middle.x = FRAME_WIDTH - 1;
     else if(target_box_bottom_middle.x < 0)
@@ -255,11 +321,13 @@ bool Detector::if_get_clamp_position()
 
     cur_angle = angle_map.at<uchar>(target_box_bottom_middle.y, target_box_bottom_middle.x);
 
+    //角度左右判断，当x<305.5875时说明角度向左偏转为负值；反之亦然
     if(target_box_bottom_middle.x < 305.5875)
         cur_angle = -cur_angle;
 
     cur_distance = distance_map.at<uchar>(target_box_bottom_middle.y, target_box_bottom_middle.x);
 
+    //距离滑动平均滤波
     if(!distance_filter_full_flag)
     {
         distance_array[distance_count++] = cur_distance;
@@ -282,13 +350,15 @@ bool Detector::if_get_clamp_position()
 
     distance_count = distance_count % distance_length;
 
+    //角度滑动平均滤波
     if(!angle_filter_full_flag)
     {
         angle_array[angle_count++] = cur_angle;
         angle_sum += cur_angle;
 
         angle = angle_sum/ angle_count;
-    } else if(angle_filter_full_flag)
+    }
+    else if(angle_filter_full_flag)
     {
         angle_sum -= angle_array[angle_count];
 
@@ -304,8 +374,9 @@ bool Detector::if_get_clamp_position()
 
     angle_count = angle_count % angle_length;
 
-    if(fabs(angle) < 10 && fabs(distance) < 35)
-        is_get_clamp_position = true;
+    //防止小车原地不动
+    // if(distance == 0)
+    //      distance = 10;
 
 #ifdef DEBUG_
     LOGM("[CLAMP] : DIS : %lf\t ANGLE : %lf \tDISCOUNT : %d", distance, angle, distance_count);
@@ -315,12 +386,20 @@ bool Detector::if_get_clamp_position()
     return is_get_clamp_position;
 }
 
+/**
+ * @brief 是否夹取垃圾成功
+ * @return 夹取成功，返回True; 未夹取成功，返回False
+ */
 bool Detector::if_picked_up()
 {
     is_picked_up = true;
     return is_picked_up;
 }
 
+/**
+ * @brief 判断小车与目标的垃圾堆放区相对位置，指导小车在x方向进行左右平移运动，直至运动到目标垃圾堆放区正前方
+ * @return 到达目标垃圾堆放区正前方，返回True; 未到达目标垃圾堆放区正前方，返回False
+ */
 bool Detector::if_get_putback_position()
 {
     direction = 0;
@@ -379,6 +458,12 @@ bool Detector::if_get_putback_position()
         is_get_putback_position = true;
 
 }
+
+/**
+ * @brief 获取垃圾的类别，未防止误判垃圾类别，若两个垃圾在视野内较近或夹取垃圾前误识别则可能出现此情况， 使用一个队列保存最近若干个垃圾类别，
+ * 一个向量进行计数，选择其中出现次数最大的一个作为最终垃圾类别
+ * @return 垃圾类别
+ */
 int Detector::get_target_type()
 {
     auto maxPosition = max_element(target_type_array.begin(), target_type_array.end());
@@ -392,3 +477,16 @@ int Detector::get_target_type()
 #endif
     return target_type;
 }
+
+/**
+ * @brief 清除目标类别队列
+ * @return none
+ */
+void Detector::clear_target_array()
+{
+    target_type_array = vector<int>(5, 0);
+
+    while (!target_type_queue.empty()) 
+        target_type_queue.pop();
+}
+

@@ -64,23 +64,24 @@ public:
 
     Rect target_box;
 private:
-    static const int distance_length = 10;
+    static const int distance_length = 5;
 
     double distance_array[distance_length];
     double distance_sum;
     int distance_count;
     bool distance_filter_full_flag;
 
-    static const int angle_length = 10;
+    static const int angle_length = 5;
     double angle_array[angle_length];
     double angle_sum;
     int angle_count;
     bool angle_filter_full_flag;
 
     Point2i  last_target_mb;
+    int last_target_type;
 public:
     void preprocess(const Mat &frame);
-    void initialize();
+    void initialize(int camera);
     void detect_target(const Mat &frame, int camera, uint8_t mission_mode);
     bool if_get_clamp_position();
     bool if_picked_up();
@@ -90,6 +91,7 @@ public:
     float get_target_angle();
     float get_target_confidence();
     int get_target_type();
+    void clear_target_array();
 };
 
 #endif //GARBAGESORTINGTROLLEY_DETECT_H

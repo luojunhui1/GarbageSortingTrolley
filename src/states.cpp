@@ -3,6 +3,9 @@
 //
 #include "states.h"
 
+/**
+ * @brief 初始化状态类各变量
+ */
 void State::initialize()
 {
     distance = 0;
@@ -22,6 +25,9 @@ void State::initialize()
     confidence = 0;
 }
 
+/**
+ * @brief 清除状态类中各变量的
+ */
 void State::clear()
 {
     is_target_found = false;

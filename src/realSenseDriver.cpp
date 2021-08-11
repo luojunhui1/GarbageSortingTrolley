@@ -4,7 +4,10 @@
 
 #include "realSenseDriver.h"
 
-/* Function calls to librealsense may raise errors of type rs_error*/
+/**
+ * @brief Function calls to librealsense may raise errors of type rs_error
+ * @param e error parameter
+ */
 void check_error(rs2_error* e)
 {
     if (e)
@@ -15,6 +18,10 @@ void check_error(rs2_error* e)
     }
 }
 
+/**
+ * @brief print device's information
+ * @param dev device id
+ */
 void print_device_info(rs2_device* dev)
 {
     rs2_error* e = 0;
@@ -26,6 +33,11 @@ void print_device_info(rs2_device* dev)
     check_error(e);
 }
 
+/**
+ * @brief get name of sensor
+ * @param sensor sensor id
+ * @return
+ */
 static std::string get_sensor_name(const rs2::sensor& sensor)
 {
     // Sensors support additional information, such as a human readable name
@@ -35,6 +47,11 @@ static std::string get_sensor_name(const rs2::sensor& sensor)
         return "Unknown Sensor";
 }
 
+/**
+ * @brief get sendor from device
+ * @param dev  device id
+ * @return sensor id
+ */
 static rs2::sensor get_a_sensor_from_a_device(const rs2::device& dev)
 {
     // A rs2::device is a container of rs2::sensors that have some correlation between them.

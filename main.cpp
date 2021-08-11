@@ -21,6 +21,7 @@
 using namespace std;
 using namespace cv;
 
+int write_count = 0;
 
 int main()
 {
@@ -48,9 +49,9 @@ int main()
     //declare and initialize detector and serial
     Detector usb_detector, deep_detector;
 
-    usb_detector.initialize();
+    usb_detector.initialize(USBCAMERA);
 
-    deep_detector.initialize();
+    deep_detector.initialize(DEEPCAMERA);
 
     Serial serial;
 
@@ -83,7 +84,7 @@ int main()
     while(true)
     {
         LOGM("MISSION : %s", mission_names[state.mission_state].c_str());
-//        int64 start = getTickCount();
+        int64 start = getTickCount();
 #pragma omp parallel sections default(none) shared(usb_cap, usb_src, usb_detector, deep_cap, deep_src, deep_detector, state)
         {
 #pragma omp section
@@ -99,7 +100,8 @@ int main()
                 deep_detector.detect_target(deep_src, DEEPCAMERA, state.mission_state);
             }
         }
-
+float time = (getTickCount() - start) / getTickFrequency();
+        LOGM("Time : %lf ms", time);
         state.clear();
 
         cur_case = 0;
@@ -200,17 +202,39 @@ int main()
 
                     usb_detector.if_get_clamp_position();
 
-                    if(fabs(usb_detector.angle) < 10)
-                    {
+                    if(fabs(usb_detector.angle) < 6)
                         state.is_target_in_center = true;
 
-                        if(usb_detector.is_get_clamp_position)
-                        {
-                            state.is_get_clamp_position = true;
-                            state.target_type = usb_detector.get_target_type();
-                            state.mission_state = PICKUP;
-                        }
+                    if((fabs(usb_detector.angle) < 6 || state.is_target_in_center)
+                        && ((usb_detector.target_type == BATTERY && fabs(usb_detector.distance) < 30)
+                        || (fabs(usb_detector.distance) < 28)))
+                    {
+                        state.is_get_clamp_position = true;
+                        state.target_type = usb_detector.get_target_type();
+                        state.mission_state = PICKUP;
                     }
+
+//                    if(fabs(usb_detector.angle) < 10 || state.is_target_in_center)
+//                    {
+//                        state.is_target_in_center = true;
+//
+//                        if(usb_detector.is_get_clamp_position)
+//                        {
+//                            state.is_get_clamp_position = true;
+//                            state.target_type = usb_detector.get_target_type();
+///*
+//			    stringstream ss;
+//			    ss<<"usb_src_"<<write_count<<
+//"_"<<target_types[usb_detector.target_type]<<".jpg";
+//			    imwrite(ss.str(), usb_src);
+//ss.str("");
+//ss<<"deep_src_"<<write_count++<<
+//"_"<<target_types[deep_detector.target_type]<<".jpg"<<endl;
+//			    imwrite(ss.str(), deep_src);
+//*/
+//                            state.mission_state = PICKUP;
+//                        }
+//                    }
 
                     state.distance = usb_detector.distance;
                     state.angle = usb_detector.angle;
@@ -240,6 +264,7 @@ int main()
                 if(receive_data.is_putback_complete == 0x01)
                 {
                     state.mission_state = DETECTING;
+   		    usb_detector.clear_target_array();
                     break;
                 }
 
@@ -257,6 +282,12 @@ int main()
         serial.write_data();
 
         serial.read_data(receive_data);
+        
+        if(receive_data.is_restart)
+	{ 
+	      LOGE("Process Stoped by STM32");
+	      exit(1);
+	}
 #ifdef DEBUG_
 
         rectangle(deep_src, deep_detector.target_box, Scalar(0, 0, 255));

@@ -50,6 +50,8 @@ struct ReceiveData
 
     uint8_t  is_putback_complete = false;
 
+    uint8_t  is_restart = false;
+
     uint8_t tail{};
 };
 
