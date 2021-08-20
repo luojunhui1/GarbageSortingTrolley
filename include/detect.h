@@ -64,7 +64,7 @@ public:
 
     Rect target_box;
 private:
-    static const int distance_length = 5;
+    static const int distance_length = 7;
 
     double distance_array[distance_length];
     double distance_sum;

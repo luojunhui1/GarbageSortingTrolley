@@ -7,7 +7,7 @@
 
 #define GRAY_THRESH 3
 
-//#define DEBUG_ 1
+#define DEBUG_ 1
 
 #define IMAGEWIDTH      640
 #define IMAGEHEIGHT     480

@@ -35,12 +35,12 @@ std::string target_types[] = {"NOTDEFINEDTYPE", "BATTERY", "SPITBALL", "PERICARP
 /**
  * usb相机 yolo cfg文件路径
  */
-std::string usb_cfg_path = "../resource/0804-yolov4-tiny.cfg";
+std::string usb_cfg_path = "../resource/0814_near.cfg";
 
 /**
  * usb相机 yolo weights文件路径
  */
-std::string usb_weight_path = "../resource/0804-yolov4-tiny_best.weights";
+std::string usb_weight_path = "../resource/0814_near.weights";
 
 /**
  * realsense深度相机 yolo weights文件路径
@@ -60,9 +60,12 @@ std::string param_path = "../resource/param.xml";
 /**
  * 近距离距离-像素映射表
  */
-std::string distance_map_path = "../resource/angle_map.jpg";
+std::string distance_map_path = "../resource/distance_map.png";
 
 /**
  * 近距离角度-像素映射表
  */
-std::string angle_map_path = "../resource/distance_map.jpg";
+std::string angle_map_path = "../resource/angle_map.jpg";
+
+bool is_success_started = false;
+

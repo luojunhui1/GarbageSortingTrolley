@@ -201,8 +201,8 @@ void Detector::detect_target(const Mat &frame, int camera, uint8_t mission_mode)
     }
 
     //非极大抑制
-    if(mission_mode == NEARING2)
-        NMSBoxes(boxes, confidences, 0.4, 0.5, indices);
+    if(mission_mode == NEARING2 || camera == DEEPCAMERA)
+        NMSBoxes(boxes, confidences, 0.5, 0.5, indices);
     else
         NMSBoxes(boxes, confidences, 0.6, 0.5, indices);
 
@@ -229,7 +229,16 @@ void Detector::detect_target(const Mat &frame, int camera, uint8_t mission_mode)
 //            if((boxes[indice].y + boxes[indice].height) < last_target_mb.y)
 //                continue;
 
+	    diff_y = fabs(FRAME_HEIGHT - (boxes[indice].y + boxes[indice].height));
+	    if(diff_y < diff_dis)
+	    {
+	    	target_index = indice;
+		diff_dis = diff_y;
+	    }
+
+/*	    
             diff_y = FRAME_HEIGHT - (boxes[indice].y + boxes[indice].height);
+
             diff_x = FRAME_WIDTH / 2 - (boxes[indice].x + boxes[indice].width / 2);
 
             if(diff_x * diff_x + diff_y * diff_y < diff_dis)
@@ -238,6 +247,7 @@ void Detector::detect_target(const Mat &frame, int camera, uint8_t mission_mode)
                 diff_dis = diff_x * diff_x + diff_y * diff_y;
             }
 
+*/
         }
 
         target_box = boxes[target_index];

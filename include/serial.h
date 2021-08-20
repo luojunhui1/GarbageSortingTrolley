@@ -52,6 +52,8 @@ struct ReceiveData
 
     uint8_t  is_restart = false;
 
+    uint8_t  is_arrive_first_position = false;
+
     uint8_t tail{};
 };
 

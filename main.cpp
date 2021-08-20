@@ -79,7 +79,9 @@ int main()
     char cur_case;
 
     int nearing2_lost_cnt = 0;
-    int nearing1_found_cnt = 0;
+    int nearing1_lost_cnt = 0;
+
+    is_success_started = true;
 
     while(true)
     {
@@ -100,7 +102,7 @@ int main()
                 deep_detector.detect_target(deep_src, DEEPCAMERA, state.mission_state);
             }
         }
-float time = (getTickCount() - start) / getTickFrequency();
+        float time = (getTickCount() - start) / getTickFrequency();
         LOGM("Time : %lf ms", time);
         state.clear();
 
@@ -113,6 +115,8 @@ float time = (getTickCount() - start) / getTickFrequency();
         switch (state.mission_state) {
             case DETECTING:
                 nearing2_lost_cnt = 0;
+                nearing1_lost_cnt = 0;
+
                 if(cur_case == 3)
                 {
                     if (usb_detector.target_confidence > deep_detector.target_confidence)
@@ -134,7 +138,6 @@ float time = (getTickCount() - start) / getTickFrequency();
                         state.mission_state = NEARING2;
                         break;
                     case 2:
-                        nearing1_found_cnt++;
                         state.is_target_found = true;
                         state.angle = deep_detector.angle;
                         deep_cap.measure(deep_detector.target_box);
@@ -150,9 +153,10 @@ float time = (getTickCount() - start) / getTickFrequency();
             case NEARING1:
                 if((cur_case&0x1) > 0)
                 {
+#ifdef DEBUG_
                     if(state.target_type != usb_detector.target_type)
                         LOGW("Target Changed from %s to %s", target_types[state.target_type].c_str(), target_types[usb_detector.target_type].c_str());
-
+#endif
                     state.is_target_found = true;
                     state.is_target_close = true;
                     state.angle = usb_detector.angle;
@@ -162,7 +166,24 @@ float time = (getTickCount() - start) / getTickFrequency();
                     break;
                 }
 
-                if(cur_case >= 2)
+                if((cur_case&0x2) == 0)
+                {
+                    if(nearing1_lost_cnt > 5)
+                    {
+                        state.is_target_found = false;
+                        state.mission_state = DETECTING;
+                    }
+                    else
+                    {
+                        state.is_target_found = true;
+                        state.mission_state = NEARING1;
+
+                        state.distance /= 1.2;
+
+                        nearing1_lost_cnt++;
+                    }
+                }
+                else
                 {
                     state.is_target_found = true;
                     state.angle = deep_detector.angle;
@@ -170,17 +191,12 @@ float time = (getTickCount() - start) / getTickFrequency();
                     state.distance = deep_cap.dist;
                     state.target_type = deep_detector.get_target_type();
                 }
-                else if(cur_case == 0)
-                {
-                    state.is_target_found = false;
-                    state.mission_state = DETECTING;
-                }
 
                 break;
             case NEARING2:
                 if((cur_case&0x1) == 0)
                 {
-                    if(nearing2_lost_cnt > 5)
+                    if(nearing2_lost_cnt > 6)
                     {
                         state.is_target_found = false;
                         state.mission_state = DETECTING;
@@ -190,7 +206,7 @@ float time = (getTickCount() - start) / getTickFrequency();
                         state.is_target_found = true;
                         state.mission_state = NEARING2;
 
-                        state.angle /= 2.0;
+                        //state.angle /= 2.0;
                         state.distance /= 2.0;
 
                         nearing2_lost_cnt++;
@@ -202,12 +218,15 @@ float time = (getTickCount() - start) / getTickFrequency();
 
                     usb_detector.if_get_clamp_position();
 
-                    if(fabs(usb_detector.angle) < 6)
+                    if((usb_detector.target_type != BATTERY && fabs(usb_detector.angle) < 8) || usb_detector.target_type == BATTERY && fabs(usb_detector.angle) < 5)
                         state.is_target_in_center = true;
 
-                    if((fabs(usb_detector.angle) < 6 || state.is_target_in_center)
-                        && ((usb_detector.target_type == BATTERY && fabs(usb_detector.distance) < 30)
-                        || (fabs(usb_detector.distance) < 28)))
+                    if(receive_data.is_arrive_first_position
+                        && (fabs(usb_detector.angle) < 8 || state.is_target_in_center)
+                        && ((usb_detector.target_type == BATTERY && fabs(usb_detector.distance) < 40)
+                           || (usb_detector.target_type == BOTTLE && fabs(usb_detector.distance) < 20)
+			   || (usb_detector.target_type == PERICARP && fabs(usb_detector.distance) < 35)
+                           || (fabs(usb_detector.distance) < 30)))
                     {
                         state.is_get_clamp_position = true;
                         state.target_type = usb_detector.get_target_type();
@@ -220,19 +239,17 @@ float time = (getTickCount() - start) / getTickFrequency();
 //
 //                        if(usb_detector.is_get_clamp_position)
 //                        {
-//                            state.is_get_clamp_position = true;
-//                            state.target_type = usb_detector.get_target_type();
-///*
-//			    stringstream ss;
-//			    ss<<"usb_src_"<<write_count<<
-//"_"<<target_types[usb_detector.target_type]<<".jpg";
-//			    imwrite(ss.str(), usb_src);
-//ss.str("");
-//ss<<"deep_src_"<<write_count++<<
-//"_"<<target_types[deep_detector.target_type]<<".jpg"<<endl;
-//			    imwrite(ss.str(), deep_src);
-//*/
-//                            state.mission_state = PICKUP;
+//                              state.is_get_clamp_position = true;
+//                              state.target_type = usb_detector.get_target_type();
+//
+//			                    stringstream ss;
+//			                    ss<<"usb_src_"<<write_count<<"_"<<target_types[usb_detector.target_type]<<".jpg";
+//			                    imwrite(ss.str(), usb_src);
+//                              ss.str("");
+//                              ss<<"deep_src_"<<write_count++<<"_"<<target_types[deep_detector.target_type]<<".jpg"<<endl;
+//			                    imwrite(ss.str(), deep_src);
+//
+//                              state.mission_state = PICKUP;
 //                        }
 //                    }
 
@@ -264,7 +281,7 @@ float time = (getTickCount() - start) / getTickFrequency();
                 if(receive_data.is_putback_complete == 0x01)
                 {
                     state.mission_state = DETECTING;
-   		    usb_detector.clear_target_array();
+                    usb_detector.clear_target_array();
                     break;
                 }
 
@@ -282,22 +299,31 @@ float time = (getTickCount() - start) / getTickFrequency();
         serial.write_data();
 
         serial.read_data(receive_data);
-        
-        if(receive_data.is_restart)
-	{ 
-	      LOGE("Process Stoped by STM32");
-	      exit(1);
-	}
-#ifdef DEBUG_
 
+        if(receive_data.is_restart)
+        {
+            LOGE("Process Stoped by STM32");
+
+            is_success_started = false;
+
+            serial.pack(state);
+            serial.write_data();
+
+            exit(1);
+        }
+#ifdef DEBUG_
+/*
         rectangle(deep_src, deep_detector.target_box, Scalar(0, 0, 255));
         rectangle(usb_src, usb_detector.target_box, Scalar(0, 0, 255));
 
-        imshow("deep", deep_src);
+	    pyrDown(usb_src, usb_src);
+
+        //imshow("deep", deep_src);
         imshow("usb", usb_src);
 
         if(waitKey(10) == 27)
             break;
+*/
 #endif
 
     }

@@ -2,6 +2,7 @@
 // Created by root on 2021/6/19.
 //
 #include "serial.h"
+#include "data.h"
 
 bool wait_uart = false;
 
@@ -81,7 +82,7 @@ void Serial::pack(const float distance, const float angle, const uint8_t mission
                   const uint8_t target_type, const uint8_t direction)
 {
     unsigned char *p;
-    memset(buff, 1, VISION_LENGTH);
+    memset(buff, 0, VISION_LENGTH);
 
     buff[0] = VISION_SOF;
     memcpy(buff + 1, &distance, 4);
@@ -102,7 +103,12 @@ void Serial::pack(const float distance, const float angle, const uint8_t mission
 void Serial::pack(State state)
 {
     unsigned char *p;
-    memset(buff, 1, VISION_LENGTH);
+
+    if(is_success_started)
+        memset(buff, 1, VISION_LENGTH);
+    else
+        memset(buff, 0, VISION_LENGTH);
+    
 
     buff[0] = VISION_SOF;
     memcpy(buff + 1, &state.distance, 4);
@@ -194,6 +200,8 @@ bool Serial::read_data(struct ReceiveData &buffer){
         memcpy(&buffer.is_front_area,buff_read + 2,1);
         memcpy(&buffer.is_putback_complete,buff_read + 3,1);
         memcpy(&buffer.is_restart,buff_read + 4,1);
+	memcpy(&buffer.is_arrive_first_position,buff_read + 5,1);
+ 
         return true;
     }
 
