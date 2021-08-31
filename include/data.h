@@ -25,5 +25,6 @@ extern std::string distance_map_path;
 extern std::string angle_map_path;
 
 extern bool is_success_started;
+extern int push_count;
 
 #endif //MASTER_DATA_H

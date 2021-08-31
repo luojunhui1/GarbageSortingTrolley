@@ -20,10 +20,12 @@ public:
     std::uint8_t is_target_in_center;
     std::uint8_t is_get_clamp_position;
     std::uint8_t is_get_putback_position;
-    std::uint8_t is_clamp_success;
+    std::uint8_t second_target_type;
+    std::uint8_t is_check_target_in_yellow;
 
     std::uint8_t target_type;
     std::uint8_t direction;
+    std::uint8_t is_push;
 
     float confidence;
 

@@ -248,6 +248,9 @@ void realSenseDriver::measure_distance(Mat &color, Mat depth, rs2::pipeline_prof
     }
 
     dist = distance_sum / effective_pixel * 100;
+
+    if(dist == NAN)
+        dist = 1000;
 }
 
 bool realSenseDriver::StopGrab()

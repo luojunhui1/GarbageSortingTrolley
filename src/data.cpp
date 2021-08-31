@@ -35,22 +35,22 @@ std::string target_types[] = {"NOTDEFINEDTYPE", "BATTERY", "SPITBALL", "PERICARP
 /**
  * usb相机 yolo cfg文件路径
  */
-std::string usb_cfg_path = "../resource/0814_near.cfg";
+std::string usb_cfg_path = "../resource/0826_near.cfg";
 
 /**
  * usb相机 yolo weights文件路径
  */
-std::string usb_weight_path = "../resource/0814_near.weights";
+std::string usb_weight_path = "../resource/0826_near.weights";
 
 /**
  * realsense深度相机 yolo weights文件路径
  */
-std::string deep_cfg_path = "../resource/0726.cfg";
+std::string deep_cfg_path = "../resource/0826_far.cfg";
 
 /**
  * realsense深度相机 yolo weights文件路径
  */
-std::string deep_weight_path = "../resource/0726.weights";
+std::string deep_weight_path = "../resource/0826_far.weights";
 
 /**
  * 单目测距方案所需参数
@@ -67,5 +67,15 @@ std::string distance_map_path = "../resource/distance_map.png";
  */
 std::string angle_map_path = "../resource/angle_map.jpg";
 
+/**
+ * 用于发送给下位机判断此时视觉上位机是否初始化完成，若完成则置为true，否则置为false
+ */
 bool is_success_started = false;
 
+/**
+ * 用于记录小车执行了几次推垃圾的动作，根据该变量判断小车此时执行到了比赛过程的哪一步，以便于进行下一步动作
+ * 当小车执行过5次推垃圾的动作后，通过两个手段一方面保证接下来小车的行动正确执行：
+ * 1. 提高垃圾检测的阈值， 减少识别错垃圾的几率
+ * 2. 当在DETECTING状态下检测到垃圾时，保证小车至少能朝垃圾方位正确运行1s左右
+ * */
+int push_count;

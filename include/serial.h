@@ -54,6 +54,10 @@ struct ReceiveData
 
     uint8_t  is_arrive_first_position = false;
 
+    uint8_t  is_push = false;
+
+    uint8_t is_check_target_in_yellow = false;
+
     uint8_t tail{};
 };
 
@@ -81,7 +85,7 @@ public:
     ~Serial();
     void pack(float distance, float angle,uint8_t mission,
               uint8_t is_target_found, uint8_t is_target_close, uint8_t is_target_in_center, uint8_t is_get_clamp_position,
-              uint8_t is_clamp_success, uint8_t is_get_putback_position, uint8_t target_type, uint8_t direction);
+              uint8_t second_target_type, uint8_t is_get_putback_position, uint8_t target_type, uint8_t direction);
     void pack(State state);
     bool init_port(int speed = 115200, char  event = 'N', int bits = 8, int stop = 1);
     bool write_data();

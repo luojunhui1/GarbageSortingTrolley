@@ -17,6 +17,28 @@
 Mat_<double> param[2];
 
 /**
+    * @brief make the rect safe
+    * @param [rect] a rect may be not safe
+    * @param [size] the image size, the biggest rect size
+    * @return it will never be false
+    * @details none
+    */
+inline bool make_rect_safe(cv::Rect &rect, const cv::Size& size)
+{
+    if(rect.x >= size.width || rect.y >= size.height)rect = Rect(0,0,0,0);
+    if (rect.x < 0)
+        rect.x = 0;
+    if (rect.x + rect.width > size.width)
+        rect.width = size.width - rect.x - 1;
+    if (rect.y < 0)
+        rect.y = 0;
+    if (rect.y + rect.height > size.height)
+        rect.height = size.height - rect.y - 1 ;
+
+    return !(rect.width <= 0 || rect.height <= 0);
+}
+
+/**
  * @brief 单目测距函数， 要求测距点必须在地面上， 参考 https://github.com/liuchangji/simple-distance-measure-by-camera
  * @param u 测距点在图像坐标系上的x坐标
  * @param v 测距点在图像坐标系上的y坐标
@@ -34,11 +56,11 @@ static float measure_distance(double u, double v, double &x, double &y, double &
     static double angle_b, angle_c, op;
     angle_b = atan(v / param[camera_index].at<double>(4, 0))*57.325;
     angle_c = param[camera_index].at<double>(0, 0) + angle_b;
-    
+
     if(angle_c == 0)
         angle_c = 0.03;
     else if(angle_c == 90 )
-	    angle_c = 89;
+        angle_c = 89;
 
     op = param[camera_index].at<double>(1, 0) / tan(angle_c/57.325);
 
@@ -71,12 +93,10 @@ static void sleep_ms(unsigned int secs)
  */
 void Detector::preprocess(const Mat &frame)
 {
-    static Mat channels[3];
-
     static Mat hsv_frame;
 
     cvtColor(frame, hsv_frame, COLOR_BGR2HSV);
-    split(hsv_frame, channels);
+
     //blue : (98, 254, 152)
     inRange(hsv_frame, Scalar(48, 204, 112), Scalar(128, 255, 192), gray[0]);
 
@@ -90,6 +110,14 @@ void Detector::preprocess(const Mat &frame)
     inRange(hsv_frame, Scalar(47,0, 64), Scalar(127, 72, 141), gray[3]);
 }
 
+void Detector::highlight_yellow_region(Mat &frame)
+{
+    static Mat hsv_frame;
+
+    cvtColor(frame, hsv_frame, COLOR_BGR2HSV);
+
+    inRange(hsv_frame, Scalar(10, 43, 46), Scalar(44, 255, 255), yellow_region);
+}
 /**
  * @brief Detector初始化， 初始化内容包括：
  * yolo_trt_detector : yolov4/yolov4-tiny/yolov5s 到 tensorRT的转化器初始化
@@ -104,11 +132,12 @@ void Detector::initialize(int camera)
 
     //加载网络模型
     if(camera == USBCAMERA)
-    	net =Net(DetectionModel(usb_cfg_path, usb_weight_path));
+        net =Net(DetectionModel(usb_cfg_path, usb_weight_path));
     else
-	net =Net(DetectionModel(deep_cfg_path, deep_weight_path));
+        net =Net(DetectionModel(deep_cfg_path, deep_weight_path));
+
     net.setPreferableBackend(DNN_BACKEND_CUDA);
-    net.setPreferableTarget(DNN_TARGET_CUDA_FP16);
+    net.setPreferableTarget(DNN_TARGET_CUDA);
     out_names = net.getUnconnectedOutLayersNames();
 
     for (int i = 0; i < out_names.size(); i++)
@@ -139,7 +168,10 @@ void Detector::initialize(int camera)
     is_get_clamp_position = false;
 
     distance_sum = 0;
+    angle_sum = 0;
     distance_count = 0;
+    angle_filter_full_flag = false;
+    distance_filter_full_flag = false;
     angle_count = 0;
     distance_filter_full_flag = false;
     direction = 0;
@@ -147,8 +179,11 @@ void Detector::initialize(int camera)
     target_type = NOTDEFINEDTYPE;
     last_target_type = NOTDEFINEDTYPE;
 
-    last_target_mb = Point2i (FRAME_WIDTH / 2, FRAME_HEIGHT);
-    target_type_array = vector<int>(5,0);
+    target_type_array = vector<int>(10,0);
+
+    initialized_ground_target_type = false;
+    for(auto &cur_target_type: ground_target_type)
+        cur_target_type = NOTDEFINEDTYPE;
 }
 
 /**
@@ -157,13 +192,10 @@ void Detector::initialize(int camera)
  * @param camera 相机种类， 根据不同相机测距方案不同， 状态切换也不同
  * @param mission_mode 当前状态
  */
-void Detector::detect_target(const Mat &frame, int camera, uint8_t mission_mode)
+void Detector::detect_target(Mat &frame, int camera, uint8_t mission_mode, uint8_t is_push, uint8_t  is_check_target_in_yellow)
 {
     is_find_target = false;
 
-    //状态大于NEARING2不需进行目标检测
-    if(mission_mode > NEARING2)
-       return;
     //网络参数输入设置
     input_blob = blobFromImage(frame, 1 / 255.F, Size(320, 320), Scalar(), true, false);//输入图像设置，input为32的整数倍，不同尺寸速度不同精度不同
     //模型参数输入
@@ -201,11 +233,28 @@ void Detector::detect_target(const Mat &frame, int camera, uint8_t mission_mode)
     }
 
     //非极大抑制
-    if(mission_mode == NEARING2 || camera == DEEPCAMERA)
-        NMSBoxes(boxes, confidences, 0.5, 0.5, indices);
+    if(push_count >= 5)
+        NMSBoxes(boxes, confidences, 0.65, 0.5, indices);
     else
-        NMSBoxes(boxes, confidences, 0.6, 0.5, indices);
+        NMSBoxes(boxes, confidences, 0.5, 0.5, indices);
 
+    //更新ground_target_type数组,以下注释代码本意为根据每次的识别情况更新一个存储每个位置垃圾种类的向量，但在实际实现上困难重重，主要原因
+    //在于无法更新时无法确定自己的位置和姿态，也无法保证每次都识别图像中的所有垃圾，因此也难以更新对应位置的垃圾，可能有能实现的逻辑，但暂时未
+    //想到。
+    /*
+    if(!initialized_ground_target_type && indices.size() != 0)
+    {
+        int middle_x_of_all_targets;
+        int sum_x_of_all_targets = 0;
+
+        for (int indice : indices)
+            sum_x_of_all_targets += boxes[indice].x + boxes[indice].width / 2;
+
+        middle_x_of_all_targets = sum_x_of_all_targets / indices.size();
+
+        initialized_ground_target_type = true;
+    }
+    */
     if(indices.empty())
     {
         //未找到目标
@@ -223,56 +272,79 @@ void Detector::detect_target(const Mat &frame, int camera, uint8_t mission_mode)
         int diff_y, diff_x;
         int diff_dis = 1 << 30;
 
-        //选取距离最近的目标
-        for (int indice : indices)
+        int last_target_type_count = 0;
+
+        if(mission_mode == PUTBACK)
         {
-//            if((boxes[indice].y + boxes[indice].height) < last_target_mb.y)
-//                continue;
-
-	    diff_y = fabs(FRAME_HEIGHT - (boxes[indice].y + boxes[indice].height));
-	    if(diff_y < diff_dis)
-	    {
-	    	target_index = indice;
-		diff_dis = diff_y;
-	    }
-
-/*	    
-            diff_y = FRAME_HEIGHT - (boxes[indice].y + boxes[indice].height);
-
-            diff_x = FRAME_WIDTH / 2 - (boxes[indice].x + boxes[indice].width / 2);
-
-            if(diff_x * diff_x + diff_y * diff_y < diff_dis)
+            // 推取目标时，只需确定垃圾种类
+            for (int indice : indices)
             {
+                if(last_target_type_count == 0 && class_ids[indice] + 1 == last_target_type)
+                {
+                    last_target_type_count++;
+                    target_index = indice;
+                    continue;
+                }
                 target_index = indice;
-                diff_dis = diff_x * diff_x + diff_y * diff_y;
+                break;
             }
+        }
+        else
+        {
 
-*/
+            //夹取目标时， 选取距离最近的目标
+            for (int indice : indices)
+            {
+                if(is_check_target_in_yellow)
+                {
+                    highlight_yellow_region(frame);
+                    Rect close_area = Rect(boxes[indice].tl() - Point(boxes[indice].width / 2, boxes[indice].height / 2), boxes[indice].size() * 2);
+                    make_rect_safe(close_area,  yellow_region.size());
+
+                    close_area_image = yellow_region(close_area);
+                    Rect cur_rect = Rect((boxes[indice].tl() - close_area.tl()), boxes[indice].size());
+
+                    make_rect_safe(cur_rect, close_area.size());
+                    Mat total_zero_image = Mat::zeros(cur_rect.size(), CV_8UC1);
+                    int caculate_area = 0;
+
+                    if(close_area.area() != boxes[indice].area())
+                    {
+                        total_zero_image.copyTo(close_area_image(cur_rect));
+                        caculate_area = 255*(close_area.area() - boxes[indice].area());
+                    }
+                    else
+                    {
+                        caculate_area = 255*(close_area.area());
+                    }
+                    Scalar_<double> zero_sum = sum(close_area_image);
+
+                    if(zero_sum[0] / (caculate_area) < 0.4)
+                        continue;
+                }
+
+                diff_y = fabs(FRAME_HEIGHT - (boxes[indice].y + boxes[indice].height));
+
+                if(diff_y < diff_dis)
+                {
+                    target_index = indice;
+                    diff_dis = diff_y;
+                }
+            }
         }
 
         target_box = boxes[target_index];
-        last_target_mb = target_box.tl() + Point2i(target_box.width / 2, target_box.height);
+        make_rect_safe(target_box, frame.size());
 
-        //目标种类队列和种类计数向量更新
         target_type_queue.push(class_ids[target_index]);
         target_type_array[class_ids[target_index]]++;
 
         if(target_type_queue.size() > 10)
         {
-            target_type_array[target_type_queue.front()]--;
+            if(target_type_array[target_type_queue.front()] > 0)
+                target_type_array[target_type_queue.front()]--;
             target_type_queue.pop();
         }
-
-//        if(camera == USBCAMERA && target_type != (class_ids[target_index] + 1))
-//        {
-//            distance_filter_full_flag = false;
-//            distance_count = 0;
-//            distance_sum = 0;
-//
-//            angle_filter_full_flag = false;
-//            angle_count = 0;
-//            angle_sum = 0;
-//        }
 
         target_type = class_ids[target_index] + 1;
 
@@ -282,18 +354,19 @@ void Detector::detect_target(const Mat &frame, int camera, uint8_t mission_mode)
     //计算目标角度和距离
     if(camera == DEEPCAMERA)
     {
+        //深度相机的距离并不使用这个计算出的距离，而是使用深度相机自身测量出的距离，这里主要是为了解算出x,y,z坐标计算角度
         distance = measure_distance(target_box.x + target_box.width/2, target_box.y + target_box.height, x, y, z, 1);
-	    //处理异常值
+        //处理异常值
         if(distance == NAN)
-		    distance = 1000;
+            distance = 1000;
 
         angle = atan(1.0*x/z)*57.29578;
     }
     else
     {
-        distance_map.at<uchar>(target_box.y + target_box.height, target_box.x + target_box.width/2);
+        distance = distance_map.at<uchar>(target_box.y + target_box.height, target_box.x + target_box.width/2);
 
-        angle_map.at<uchar>(target_box.y + target_box.height, target_box.x + target_box.width/2);
+        angle = angle_map.at<uchar>(target_box.y + target_box.height, target_box.x + target_box.width/2);
     }
 #ifdef DEBUG_
     LOGM("Pixel X: %d\tPixel Y : %d", target_box.x + target_box.width/2, target_box.y + target_box.height);
@@ -360,6 +433,8 @@ bool Detector::if_get_clamp_position()
 
     distance_count = distance_count % distance_length;
 
+    distance = cur_distance;
+
     //角度滑动平均滤波
     if(!angle_filter_full_flag)
     {
@@ -384,12 +459,8 @@ bool Detector::if_get_clamp_position()
 
     angle_count = angle_count % angle_length;
 
-    //防止小车原地不动
-    // if(distance == 0)
-    //      distance = 10;
-
 #ifdef DEBUG_
-    LOGM("[CLAMP] : DIS : %lf\t ANGLE : %lf \tDISCOUNT : %d", distance, angle, distance_count);
+    LOGM("[CLAMP] : FILL : %d\tDIS : %f\t ANGLE : %f \tSUM : %lf\tANGCOUNT : %d", angle_filter_full_flag, distance, angle, angle_sum, angle_count);
     LOGM("[CLAMP] : TARGET_TYPE : %s", target_types[target_type].c_str());
 #endif
 
@@ -494,9 +565,8 @@ int Detector::get_target_type()
  */
 void Detector::clear_target_array()
 {
-    target_type_array = vector<int>(5, 0);
+    target_type_array = vector<int>(10, 0);
 
-    while (!target_type_queue.empty()) 
+    while (!target_type_queue.empty())
         target_type_queue.pop();
 }
-
