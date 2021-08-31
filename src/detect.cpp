@@ -295,6 +295,7 @@ void Detector::detect_target(Mat &frame, int camera, uint8_t mission_mode, uint8
             //夹取目标时， 选取距离最近的目标
             for (int indice : indices)
             {
+                //是否要分拣黄色区域垃圾
                 if(is_check_target_in_yellow)
                 {
                     highlight_yellow_region(frame);
