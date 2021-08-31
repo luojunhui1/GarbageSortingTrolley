@@ -38,4 +38,4 @@
 ## 3. 其他
 至于具体的控制逻辑只能看代码了，代码里的注释比较多，应该没问题，附上一张在写代码之处画的状态转换图，图中有些地方已经不符合现在的逻辑了，但可以作为参考。
 
-![状态图](https://github.com/luojunhui1/GarbageSortingTrolley/StatesMachine.png)
+![状态图](https://github.com/luojunhui1/GarbageSortingTrolley/blob/main/StatesMachine.png)
